@@ -17,7 +17,21 @@ function initDb() {
   const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
   db.exec(schema);
 
+  migrarGastosFecha(db);
+
   return db;
+}
+
+// Bases de datos creadas antes de que 'gastos' tuviera columna 'fecha' necesitan
+// esta migración: SQLite no permite ALTER TABLE ... ADD COLUMN NOT NULL con
+// expresiones no constantes, así que se agrega nullable y se rellena aparte.
+function migrarGastosFecha(db) {
+  const columnas = db.prepare('PRAGMA table_info(gastos)').all();
+  const tieneFecha = columnas.some((c) => c.name === 'fecha');
+  if (!tieneFecha) {
+    db.exec('ALTER TABLE gastos ADD COLUMN fecha TEXT');
+    db.exec("UPDATE gastos SET fecha = date('now') WHERE fecha IS NULL");
+  }
 }
 
 module.exports = { initDb, DB_PATH };

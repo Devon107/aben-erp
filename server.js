@@ -265,9 +265,11 @@ app.get('/api/gastos', (req, res) => {
   const { proyecto_id } = req.query;
   let gastos;
   if (proyecto_id) {
-    gastos = db.prepare('SELECT * FROM gastos WHERE proyecto_id = ? ORDER BY id DESC').all(proyecto_id);
+    gastos = db
+      .prepare('SELECT * FROM gastos WHERE proyecto_id = ? ORDER BY fecha DESC, id DESC')
+      .all(proyecto_id);
   } else {
-    gastos = db.prepare('SELECT * FROM gastos ORDER BY id DESC').all();
+    gastos = db.prepare('SELECT * FROM gastos ORDER BY fecha DESC, id DESC').all();
   }
   res.json(gastos);
 });
@@ -279,16 +281,18 @@ app.get('/api/gastos/:id', (req, res) => {
 });
 
 app.post('/api/gastos', (req, res) => {
-  const { proyecto_id, descripcion, monto } = req.body;
+  const { proyecto_id, descripcion, monto, fecha } = req.body;
   if (!proyecto_id || !descripcion || monto === undefined) {
     return res.status(400).json({ error: 'proyecto_id, descripcion y monto son requeridos' });
   }
   const proyecto = db.prepare('SELECT id FROM proyectos WHERE id = ?').get(proyecto_id);
   if (!proyecto) return res.status(400).json({ error: 'proyecto_id no existe' });
 
+  const fechaFinal = fecha || new Date().toISOString().slice(0, 10);
+
   const info = db
-    .prepare('INSERT INTO gastos (proyecto_id, descripcion, monto) VALUES (?, ?, ?)')
-    .run(proyecto_id, descripcion, monto);
+    .prepare('INSERT INTO gastos (proyecto_id, descripcion, monto, fecha) VALUES (?, ?, ?, ?)')
+    .run(proyecto_id, descripcion, monto, fechaFinal);
   const gasto = db.prepare('SELECT * FROM gastos WHERE id = ?').get(info.lastInsertRowid);
   res.status(201).json(gasto);
 });
@@ -300,11 +304,13 @@ app.put('/api/gastos/:id', (req, res) => {
   const proyecto_id = req.body.proyecto_id ?? existing.proyecto_id;
   const descripcion = req.body.descripcion ?? existing.descripcion;
   const monto = req.body.monto !== undefined ? req.body.monto : existing.monto;
+  const fecha = req.body.fecha ?? existing.fecha;
 
-  db.prepare('UPDATE gastos SET proyecto_id = ?, descripcion = ?, monto = ? WHERE id = ?').run(
+  db.prepare('UPDATE gastos SET proyecto_id = ?, descripcion = ?, monto = ?, fecha = ? WHERE id = ?').run(
     proyecto_id,
     descripcion,
     monto,
+    fecha,
     req.params.id
   );
   const gasto = db.prepare('SELECT * FROM gastos WHERE id = ?').get(req.params.id);
@@ -315,6 +321,70 @@ app.delete('/api/gastos/:id', (req, res) => {
   const info = db.prepare('DELETE FROM gastos WHERE id = ?').run(req.params.id);
   if (info.changes === 0) return notFound(res, 'Gasto');
   res.status(204).end();
+});
+
+// ---------- Dashboard ----------
+
+const FECHA_ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+app.get('/api/dashboard', (req, res) => {
+  const { desde, hasta } = req.query;
+  if (!desde || !hasta || !FECHA_ISO_RE.test(desde) || !FECHA_ISO_RE.test(hasta)) {
+    return res.status(400).json({ error: 'desde y hasta son requeridos, formato YYYY-MM-DD' });
+  }
+  if (desde > hasta) {
+    return res.status(400).json({ error: 'desde no puede ser posterior a hasta' });
+  }
+
+  // Horas e ingreso quedan naturalmente acotados al rango porque provienen de
+  // entradas_tiempo.fecha. Para proyectos de precio fijo (que no se prorratean
+  // por hora) se atribuye el precio_fijo completo al rango si hubo al menos
+  // una entrada de tiempo dentro de él; si no, no se cuenta en ese período.
+  const rows = db
+    .prepare(
+      `WITH horas_proyecto AS (
+         SELECT proyecto_id, SUM(horas) AS horas
+         FROM entradas_tiempo
+         WHERE fecha BETWEEN ? AND ?
+         GROUP BY proyecto_id
+       ),
+       gastos_proyecto AS (
+         SELECT proyecto_id, SUM(monto) AS gastos
+         FROM gastos
+         WHERE fecha BETWEEN ? AND ?
+         GROUP BY proyecto_id
+       )
+       SELECT
+         c.id AS cliente_id,
+         c.nombre AS cliente_nombre,
+         COALESCE(SUM(hp.horas), 0) AS total_horas,
+         COALESCE(SUM(
+           CASE
+             WHEN p.tipo_cobro = 'hora' THEN COALESCE(hp.horas, 0) * COALESCE(p.tarifa_hora, 0)
+             WHEN p.tipo_cobro = 'fijo' AND hp.horas IS NOT NULL THEN COALESCE(p.precio_fijo, 0)
+             ELSE 0
+           END
+         ), 0) AS ingreso_total,
+         COALESCE(SUM(gp.gastos), 0) AS total_gastos
+       FROM clientes c
+       LEFT JOIN proyectos p ON p.cliente_id = c.id
+       LEFT JOIN horas_proyecto hp ON hp.proyecto_id = p.id
+       LEFT JOIN gastos_proyecto gp ON gp.proyecto_id = p.id
+       GROUP BY c.id, c.nombre
+       ORDER BY c.nombre COLLATE NOCASE`
+    )
+    .all(desde, hasta, desde, hasta);
+
+  const clientesResultado = rows.map((r) => ({
+    cliente_id: r.cliente_id,
+    cliente_nombre: r.cliente_nombre,
+    total_horas: r.total_horas,
+    ingreso_total: r.ingreso_total,
+    total_gastos: r.total_gastos,
+    margen: r.ingreso_total - r.total_gastos,
+  }));
+
+  res.json({ desde, hasta, clientes: clientesResultado });
 });
 
 app.listen(PORT, () => {

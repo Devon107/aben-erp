@@ -1,9 +1,13 @@
-const state = {
-  clientes: [],
-  proyectos: [],
-  entradas: [],
-  gastos: [],
-};
+// ---------- Estado ----------
+
+let clientes = [];
+let clienteActualId = null;
+let proyectosActuales = [];
+const cacheRentabilidad = {}; // proyectoId -> data
+const cacheGastos = {}; // proyectoId -> array
+const cacheEntradas = {}; // proyectoId -> array
+const detalleAbierto = new Set(); // proyectoId
+let activeTimer = null; // { proyectoId, startTime: ISOString } | null
 
 // ---------- Utilidades ----------
 
@@ -33,52 +37,409 @@ function money(n) {
   return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'USD' }).format(n || 0);
 }
 
-function resetForm(form) {
-  form.reset();
-  form.querySelector('input[name="id"]').value = '';
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str ?? '';
+  return div.innerHTML;
 }
 
-// ---------- Tabs ----------
+const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
-document.querySelectorAll('.tab-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+function fechaCorta(iso) {
+  if (!iso) return '';
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!match) return iso;
+  const [, , mes, dia] = match;
+  return `${dia} ${MESES_CORTOS[Number(mes) - 1]}`;
+}
+
+function isoDateLocal(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dia}`;
+}
+
+function formatElapsed(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const h = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+  const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+  const s = String(totalSeconds % 60).padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
+
+// ---------- Modales ----------
+
+function openModal(id) {
+  document.getElementById(id).classList.remove('hidden');
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.add('hidden');
+}
+
+document.querySelectorAll('[data-close-modal]').forEach((el) => {
+  el.addEventListener('click', () => closeModal(el.dataset.closeModal));
+});
+
+document.querySelectorAll('.modal-overlay').forEach((overlay) => {
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeModal(overlay.id);
   });
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay:not(.hidden)').forEach((o) => o.classList.add('hidden'));
+  }
+});
+
+// ---------- Timer (cronómetro) ----------
+
+const TIMER_STORAGE_KEY = 'freelance-tracker:activeTimer';
+
+function cargarTimerGuardado() {
+  try {
+    const raw = localStorage.getItem(TIMER_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function guardarTimerEnStorage(timer) {
+  if (timer) {
+    localStorage.setItem(TIMER_STORAGE_KEY, JSON.stringify(timer));
+  } else {
+    localStorage.removeItem(TIMER_STORAGE_KEY);
+  }
+}
+
+function timerWidgetHtml(proyectoId) {
+  if (activeTimer && activeTimer.proyectoId === proyectoId) {
+    const elapsed = Date.now() - new Date(activeTimer.startTime).getTime();
+    return `
+      <span class="timer-display" id="timer-display-${proyectoId}">${formatElapsed(elapsed)}</span>
+      <button class="btn btn-secondary btn-sm" data-timer-stop="${proyectoId}">Detener</button>`;
+  }
+  if (activeTimer) {
+    return `
+      <span class="timer-display muted">Cronómetro activo en otro proyecto</span>
+      <button class="btn btn-primary btn-sm" disabled>Iniciar</button>`;
+  }
+  return `
+    <span class="timer-display muted">00:00:00</span>
+    <button class="btn btn-primary btn-sm" data-timer-start="${proyectoId}">Iniciar</button>`;
+}
+
+function refrescarWidgetsTimer() {
+  proyectosActuales.forEach((p) => {
+    const el = document.getElementById(`timer-widget-${p.id}`);
+    if (el) el.innerHTML = timerWidgetHtml(p.id);
+  });
+}
+
+function tickTimerDisplay() {
+  if (!activeTimer) return;
+  const el = document.getElementById(`timer-display-${activeTimer.proyectoId}`);
+  if (el) el.textContent = formatElapsed(Date.now() - new Date(activeTimer.startTime).getTime());
+}
+
+setInterval(tickTimerDisplay, 1000);
+
+function iniciarTimer(proyectoId) {
+  if (activeTimer) {
+    showToast('Ya hay un cronómetro activo en otro proyecto', true);
+    return;
+  }
+  activeTimer = { proyectoId, startTime: new Date().toISOString() };
+  guardarTimerEnStorage(activeTimer);
+  refrescarWidgetsTimer();
+}
+
+async function detenerTimer(proyectoId) {
+  if (!activeTimer || activeTimer.proyectoId !== proyectoId) return;
+
+  const inicio = new Date(activeTimer.startTime);
+  const ahora = new Date();
+  const horas = Math.max(0.01, Math.round(((ahora - inicio) / 3600000) * 100) / 100);
+
+  const descripcion = window.prompt('Descripción breve de la tarea realizada:', '');
+  if (descripcion === null) return; // el usuario canceló: el cronómetro sigue corriendo
+
+  try {
+    await api('/api/entradas-tiempo', {
+      method: 'POST',
+      body: JSON.stringify({
+        proyecto_id: proyectoId,
+        fecha: isoDateLocal(inicio),
+        horas,
+        descripcion: descripcion.trim() || 'Sesión de trabajo',
+        origen: 'timer',
+      }),
+    });
+    activeTimer = null;
+    guardarTimerEnStorage(null);
+    refrescarWidgetsTimer();
+    showToast(`Tiempo registrado: ${horas} h`);
+    await cargarEntradas(proyectoId);
+    await cargarRentabilidad(proyectoId);
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+// ---------- Navegación ----------
+
+function ocultarTodasLasVistas() {
+  document.getElementById('view-dashboard').classList.remove('active');
+  document.getElementById('view-clientes').classList.remove('active');
+  document.getElementById('view-cliente').classList.remove('active');
+  document.getElementById('crumb-dashboard').classList.remove('active');
+  document.getElementById('crumb-clientes').classList.remove('active');
+  document.getElementById('crumb-cliente-wrap').classList.add('hidden');
+}
+
+function irAVistaDashboard() {
+  clienteActualId = null;
+  ocultarTodasLasVistas();
+  document.getElementById('view-dashboard').classList.add('active');
+  document.getElementById('crumb-dashboard').classList.add('active');
+  cargarDashboard();
+}
+
+function irAVistaClientes() {
+  clienteActualId = null;
+  ocultarTodasLasVistas();
+  document.getElementById('view-clientes').classList.add('active');
+  document.getElementById('crumb-clientes').classList.add('active');
+}
+
+document.getElementById('crumb-dashboard').addEventListener('click', irAVistaDashboard);
+document.getElementById('crumb-clientes').addEventListener('click', irAVistaClientes);
+document.getElementById('btn-volver').addEventListener('click', irAVistaClientes);
+
+async function irAVistaCliente(id) {
+  clienteActualId = id;
+  const cliente = clientes.find((c) => c.id === id);
+  if (!cliente) return;
+
+  ocultarTodasLasVistas();
+  document.getElementById('view-cliente').classList.add('active');
+  document.getElementById('crumb-clientes').classList.add('active');
+
+  document.getElementById('cliente-detalle-nombre').textContent = cliente.nombre;
+  document.getElementById('cliente-detalle-modo').textContent = cliente.modo_facturacion;
+  document.getElementById('crumb-cliente-nombre').textContent = cliente.nombre;
+  document.getElementById('crumb-cliente-wrap').classList.remove('hidden');
+
+  detalleAbierto.clear();
+  await cargarProyectosDeCliente(id);
+}
+
+// ---------- Dashboard ----------
+
+function calcularRangoPreset(preset) {
+  const hoy = new Date();
+  if (preset === 'mes-actual') {
+    const desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    const hasta = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+    return { desde: isoDateLocal(desde), hasta: isoDateLocal(hasta) };
+  }
+  if (preset === 'mes-pasado') {
+    const desde = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+    const hasta = new Date(hoy.getFullYear(), hoy.getMonth(), 0);
+    return { desde: isoDateLocal(desde), hasta: isoDateLocal(hasta) };
+  }
+  if (preset === 'anio-actual') {
+    const desde = new Date(hoy.getFullYear(), 0, 1);
+    const hasta = new Date(hoy.getFullYear(), 11, 31);
+    return { desde: isoDateLocal(desde), hasta: isoDateLocal(hasta) };
+  }
+  return null; // 'personalizado' se resuelve leyendo los inputs de fecha
+}
+
+function rangoActual() {
+  const preset = document.getElementById('dashboard-rango').value;
+  if (preset === 'personalizado') {
+    const desde = document.getElementById('dashboard-desde').value;
+    const hasta = document.getElementById('dashboard-hasta').value;
+    return desde && hasta ? { desde, hasta } : null;
+  }
+  return calcularRangoPreset(preset);
+}
+
+function actualizarVisibilidadInputsPersonalizados() {
+  const esPersonalizado = document.getElementById('dashboard-rango').value === 'personalizado';
+  document.getElementById('dashboard-desde').classList.toggle('hidden', !esPersonalizado);
+  document.getElementById('dashboard-hasta').classList.toggle('hidden', !esPersonalizado);
+  document.getElementById('dashboard-rango-sep').classList.toggle('hidden', !esPersonalizado);
+}
+
+document.getElementById('dashboard-rango').addEventListener('change', () => {
+  actualizarVisibilidadInputsPersonalizados();
+  const rango = rangoActual();
+  if (rango) cargarDashboard();
+});
+document.getElementById('dashboard-desde').addEventListener('change', () => {
+  if (rangoActual()) cargarDashboard();
+});
+document.getElementById('dashboard-hasta').addEventListener('change', () => {
+  if (rangoActual()) cargarDashboard();
+});
+
+function calcularAlertas(clientesData) {
+  const conHoras = clientesData.filter((c) => c.total_horas > 0);
+  let promedioHoras = 0;
+  let promedioMargenPorHora = 0;
+  if (conHoras.length > 0) {
+    promedioHoras = conHoras.reduce((s, c) => s + c.total_horas, 0) / conHoras.length;
+    promedioMargenPorHora =
+      conHoras.reduce((s, c) => s + c.margen / c.total_horas, 0) / conHoras.length;
+  }
+
+  return clientesData.map((c) => {
+    const margenPorHora = c.total_horas > 0 ? c.margen / c.total_horas : null;
+    let alerta = null;
+    if (c.margen < 0) {
+      alerta = 'perdida';
+    } else if (
+      c.total_horas > 0 &&
+      c.total_horas >= promedioHoras &&
+      margenPorHora < promedioMargenPorHora
+    ) {
+      alerta = 'bajo-rendimiento';
+    }
+    return { ...c, alerta, margen_por_hora: margenPorHora };
+  });
+}
+
+function alertaBadgeHtml(alerta) {
+  if (alerta === 'perdida') {
+    return '<span class="badge-alerta perdida" title="Este cliente genera pérdida en el período seleccionado">&#9888; Pérdida</span>';
+  }
+  if (alerta === 'bajo-rendimiento') {
+    return '<span class="badge-alerta bajo" title="Muchas horas invertidas con un margen por hora por debajo del promedio de tus clientes en este período">&#9888; Bajo rendimiento</span>';
+  }
+  return '<span class="text-faint">—</span>';
+}
+
+async function cargarDashboard() {
+  const rango = rangoActual();
+  if (!rango) return;
+
+  const label = document.getElementById('dashboard-rango-label');
+  label.textContent = `Del ${fechaCorta(rango.desde)} al ${fechaCorta(rango.hasta)}`;
+
+  try {
+    const data = await api(`/api/dashboard?desde=${rango.desde}&hasta=${rango.hasta}`);
+    renderDashboard(calcularAlertas(data.clientes));
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+function renderDashboard(clientesData) {
+  const tbody = document.getElementById('tabla-dashboard-body');
+  const empty = document.getElementById('dashboard-empty');
+
+  if (clientesData.length === 0) {
+    tbody.innerHTML = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+
+  tbody.innerHTML = clientesData
+    .map((c) => {
+      const filaClase = c.alerta === 'perdida' ? 'fila-perdida' : c.alerta === 'bajo-rendimiento' ? 'fila-bajo-rendimiento' : '';
+      const margenClase = c.margen >= 0 ? 'valor-positivo' : 'valor-negativo';
+      return `
+        <tr class="${filaClase}">
+          <td><button class="link-cliente" data-ir-cliente="${c.cliente_id}">${escapeHtml(c.cliente_nombre)}</button></td>
+          <td>${c.total_horas} h</td>
+          <td>${money(c.ingreso_total)}</td>
+          <td class="${margenClase}">${money(c.margen)}</td>
+          <td>${alertaBadgeHtml(c.alerta)}</td>
+        </tr>`;
+    })
+    .join('');
+}
+
+document.getElementById('tabla-dashboard-body').addEventListener('click', (e) => {
+  const clienteId = e.target.closest('[data-ir-cliente]')?.dataset.irCliente;
+  if (clienteId) irAVistaCliente(Number(clienteId));
 });
 
 // ---------- Clientes ----------
 
 async function cargarClientes() {
-  state.clientes = await api('/api/clientes');
+  clientes = await api('/api/clientes');
   renderClientes();
-  poblarSelectClientes();
 }
 
 function renderClientes() {
-  const tbody = document.querySelector('#tabla-clientes tbody');
-  tbody.innerHTML = state.clientes
+  const grid = document.getElementById('grid-clientes');
+  const empty = document.getElementById('clientes-empty');
+  if (clientes.length === 0) {
+    grid.innerHTML = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+  grid.innerHTML = clientes
     .map(
       (c) => `
-      <tr>
-        <td>${c.id}</td>
-        <td>${escapeHtml(c.nombre)}</td>
-        <td>${c.modo_facturacion}</td>
-        <td class="row-actions">
-          <button class="btn-icon" data-edit-cliente="${c.id}">Editar</button>
-          <button class="btn-icon danger" data-del-cliente="${c.id}">Borrar</button>
-        </td>
-      </tr>`
+      <div class="cliente-card" data-id="${c.id}">
+        <div class="cliente-card-top">
+          <h3>${escapeHtml(c.nombre)}</h3>
+          <div class="cliente-card-actions">
+            <button class="btn-icon" data-edit-cliente="${c.id}" title="Editar">&#9998;</button>
+            <button class="btn-icon danger" data-del-cliente="${c.id}" title="Eliminar">&times;</button>
+          </div>
+        </div>
+        <span class="badge badge-modo">${c.modo_facturacion}</span>
+      </div>`
     )
     .join('');
 }
 
-function poblarSelectClientes() {
-  const opts = state.clientes.map((c) => `<option value="${c.id}">${escapeHtml(c.nombre)}</option>`).join('');
-  document.querySelector('#form-proyecto select[name="cliente_id"]').innerHTML = opts;
+document.getElementById('grid-clientes').addEventListener('click', (e) => {
+  const editId = e.target.closest('[data-edit-cliente]')?.dataset.editCliente;
+  const delId = e.target.closest('[data-del-cliente]')?.dataset.delCliente;
+  const card = e.target.closest('.cliente-card');
+
+  if (editId) {
+    e.stopPropagation();
+    const cliente = clientes.find((c) => c.id === Number(editId));
+    abrirModalCliente(cliente);
+    return;
+  }
+  if (delId) {
+    e.stopPropagation();
+    eliminarCliente(Number(delId));
+    return;
+  }
+  if (card) {
+    irAVistaCliente(Number(card.dataset.id));
+  }
+});
+
+function abrirModalCliente(cliente) {
+  const form = document.getElementById('form-cliente');
+  form.reset();
+  form.id.value = cliente?.id || '';
+  form.nombre.value = cliente?.nombre || '';
+  form.modo_facturacion.value = cliente?.modo_facturacion || 'hora';
+  document.getElementById('modal-cliente-title').textContent = cliente ? 'Editar cliente' : 'Nuevo cliente';
+  openModal('modal-cliente-overlay');
 }
+
+document.getElementById('btn-nuevo-cliente').addEventListener('click', () => abrirModalCliente(null));
+document.getElementById('btn-editar-cliente').addEventListener('click', () => {
+  const cliente = clientes.find((c) => c.id === clienteActualId);
+  abrirModalCliente(cliente);
+});
 
 document.getElementById('form-cliente').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -96,80 +457,176 @@ document.getElementById('form-cliente').addEventListener('submit', async (e) => 
       await api('/api/clientes', { method: 'POST', body: JSON.stringify(payload) });
       showToast('Cliente creado');
     }
-    resetForm(form);
+    closeModal('modal-cliente-overlay');
     await cargarClientes();
-    await cargarProyectos();
+    if (clienteActualId && String(clienteActualId) === id) {
+      await irAVistaCliente(clienteActualId);
+    }
   } catch (err) {
     showToast(err.message, true);
   }
 });
 
-document.querySelector('#tabla-clientes tbody').addEventListener('click', async (e) => {
-  const editId = e.target.dataset.editCliente;
-  const delId = e.target.dataset.delCliente;
-  if (editId) {
-    const c = state.clientes.find((x) => x.id === Number(editId));
-    const form = document.getElementById('form-cliente');
-    form.id.value = c.id;
-    form.nombre.value = c.nombre;
-    form.modo_facturacion.value = c.modo_facturacion;
+async function eliminarCliente(id) {
+  if (!confirm('¿Eliminar este cliente? Se eliminarán también sus proyectos, horas y gastos asociados.')) return;
+  try {
+    await api(`/api/clientes/${id}`, { method: 'DELETE' });
+    showToast('Cliente eliminado');
+    await cargarClientes();
+    if (clienteActualId === id) irAVistaClientes();
+  } catch (err) {
+    showToast(err.message, true);
   }
-  if (delId) {
-    if (!confirm('¿Borrar este cliente? Esto también borrará sus proyectos asociados.')) return;
-    try {
-      await api(`/api/clientes/${delId}`, { method: 'DELETE' });
-      showToast('Cliente eliminado');
-      await cargarClientes();
-      await cargarProyectos();
-    } catch (err) {
-      showToast(err.message, true);
-    }
-  }
-});
+}
 
 // ---------- Proyectos ----------
 
-async function cargarProyectos() {
-  state.proyectos = await api('/api/proyectos');
+async function cargarProyectosDeCliente(clienteId) {
+  proyectosActuales = await api(`/api/proyectos?cliente_id=${clienteId}`);
   renderProyectos();
-  poblarSelectProyectos();
-}
-
-function nombreCliente(id) {
-  const c = state.clientes.find((x) => x.id === id);
-  return c ? c.nombre : `#${id}`;
+  proyectosActuales.forEach((p) => cargarRentabilidad(p.id));
 }
 
 function renderProyectos() {
-  const tbody = document.querySelector('#tabla-proyectos tbody');
-  tbody.innerHTML = state.proyectos
-    .map((p) => {
-      const tarifa = p.tipo_cobro === 'hora' ? money(p.tarifa_hora) + '/h' : money(p.precio_fijo);
-      return `
-      <tr>
-        <td>${p.id}</td>
-        <td>${escapeHtml(nombreCliente(p.cliente_id))}</td>
-        <td>${escapeHtml(p.nombre)}</td>
-        <td>${p.tipo_cobro}</td>
-        <td>${tarifa}</td>
-        <td><span class="badge ${p.estado}">${p.estado}</span></td>
-        <td class="row-actions">
-          <button class="btn-icon" data-edit-proyecto="${p.id}">Editar</button>
-          <button class="btn-icon danger" data-del-proyecto="${p.id}">Borrar</button>
-        </td>
-      </tr>`;
-    })
-    .join('');
+  const grid = document.getElementById('grid-proyectos');
+  const empty = document.getElementById('proyectos-empty');
+  if (proyectosActuales.length === 0) {
+    grid.innerHTML = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+  grid.innerHTML = proyectosActuales.map((p) => renderProyectoCard(p)).join('');
 }
 
-function poblarSelectProyectos() {
-  const opts = state.proyectos
-    .map((p) => `<option value="${p.id}">${escapeHtml(p.nombre)} (${escapeHtml(nombreCliente(p.cliente_id))})</option>`)
-    .join('');
-  document.querySelector('#form-tiempo select[name="proyecto_id"]').innerHTML = opts;
-  document.querySelector('#form-gasto select[name="proyecto_id"]').innerHTML = opts;
-  document.getElementById('select-rentabilidad-proyecto').innerHTML = opts;
+function renderProyectoCard(p) {
+  const abierto = detalleAbierto.has(p.id);
+  const tarifaTexto = p.tipo_cobro === 'hora' ? `${money(p.tarifa_hora)} / hora` : `${money(p.precio_fijo)} fijo`;
+  return `
+    <div class="proyecto-card ${abierto ? 'abierto' : ''}" data-proyecto-id="${p.id}">
+      <div class="proyecto-card-top">
+        <div>
+          <h3>${escapeHtml(p.nombre)}</h3>
+          <div class="proyecto-meta">${tarifaTexto}</div>
+        </div>
+        <div class="proyecto-card-actions">
+          <span class="badge badge-${p.estado}">${p.estado}</span>
+          <button class="btn-icon" data-edit-proyecto="${p.id}" title="Editar">&#9998;</button>
+          <button class="btn-icon danger" data-del-proyecto="${p.id}" title="Eliminar">&times;</button>
+        </div>
+      </div>
+
+      <div class="rent-mini" id="rent-mini-${p.id}">
+        ${rentMiniHtml(cacheRentabilidad[p.id])}
+      </div>
+
+      <div class="proyecto-footer">
+        <button class="btn btn-secondary btn-sm" data-toggle-detalle="${p.id}">
+          ${abierto ? 'Ocultar detalle' : 'Ver detalle y gastos'}
+        </button>
+      </div>
+
+      <div class="proyecto-detalle ${abierto ? '' : 'hidden'}" id="detalle-${p.id}">
+        <div class="detalle-col">
+          <h4>Registro de tiempo</h4>
+
+          <div class="timer-widget" id="timer-widget-${p.id}">
+            ${timerWidgetHtml(p.id)}
+          </div>
+
+          <form class="subform form-tiempo" data-proyecto-id="${p.id}">
+            <input type="hidden" name="id" />
+            <input type="hidden" name="origen" value="manual" />
+            <input type="date" name="fecha" required />
+            <input type="number" step="0.25" min="0" name="horas" placeholder="Horas (ej. 1.5)" required />
+            <input type="text" name="descripcion" placeholder="Descripción" />
+            <button type="submit" class="btn btn-primary btn-sm" data-submit-tiempo>Agregar</button>
+            <button type="button" class="btn btn-secondary btn-sm hidden" data-cancelar-tiempo="${p.id}">Cancelar</button>
+          </form>
+
+          <div class="tabla-wrap">
+            <table class="tabla-entradas">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Horas</th>
+                  <th>Descripción</th>
+                  <th>Origen</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="lista-tiempo-${p.id}">
+                <tr><td colspan="5" class="mini-empty">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="detalle-col">
+          <h4>Gastos</h4>
+          <form class="subform form-gasto" data-proyecto-id="${p.id}">
+            <input type="date" name="fecha" value="${isoDateLocal(new Date())}" required />
+            <input type="text" name="descripcion" placeholder="Descripción" required />
+            <input type="number" step="0.01" min="0" name="monto" placeholder="Monto" required />
+            <button type="submit" class="btn btn-primary btn-sm">Agregar</button>
+          </form>
+          <ul class="mini-list" id="lista-gastos-${p.id}">
+            <li class="mini-empty">Cargando...</li>
+          </ul>
+        </div>
+      </div>
+    </div>`;
 }
+
+function rentMiniHtml(data) {
+  if (!data) {
+    return `
+      <div class="rent-mini-item"><span class="label">Horas</span><span class="value">&hellip;</span></div>
+      <div class="rent-mini-item"><span class="label">Ingreso</span><span class="value">&hellip;</span></div>
+      <div class="rent-mini-item"><span class="label">Gastos</span><span class="value">&hellip;</span></div>
+      <div class="rent-mini-item margen"><span class="label">Margen</span><span class="value">&hellip;</span></div>`;
+  }
+  const margenClass = data.margen >= 0 ? 'positivo' : 'negativo';
+  return `
+    <div class="rent-mini-item"><span class="label">Horas</span><span class="value">${data.total_horas} h</span></div>
+    <div class="rent-mini-item"><span class="label">Ingreso</span><span class="value">${money(data.ingreso_total)}</span></div>
+    <div class="rent-mini-item"><span class="label">Gastos</span><span class="value">${money(data.total_gastos)}</span></div>
+    <div class="rent-mini-item margen"><span class="label">Margen</span><span class="value ${margenClass}">${money(data.margen)}</span></div>`;
+}
+
+async function cargarRentabilidad(proyectoId) {
+  try {
+    const data = await api(`/api/proyectos/${proyectoId}/rentabilidad`);
+    cacheRentabilidad[proyectoId] = data;
+    const el = document.getElementById(`rent-mini-${proyectoId}`);
+    if (el) el.innerHTML = rentMiniHtml(data);
+  } catch (err) {
+    // el proyecto pudo haber sido eliminado mientras cargaba; se ignora
+  }
+}
+
+function abrirModalProyecto(proyecto) {
+  const form = document.getElementById('form-proyecto');
+  form.reset();
+  form.id.value = proyecto?.id || '';
+  form.cliente_id.value = clienteActualId;
+  form.nombre.value = proyecto?.nombre || '';
+  form.tipo_cobro.value = proyecto?.tipo_cobro || 'hora';
+  form.tarifa_hora.value = proyecto?.tarifa_hora ?? '';
+  form.precio_fijo.value = proyecto?.precio_fijo ?? '';
+  form.estado.value = proyecto?.estado || 'activo';
+  actualizarCamposTipoCobro();
+  document.getElementById('modal-proyecto-title').textContent = proyecto ? 'Editar proyecto' : 'Nuevo proyecto';
+  openModal('modal-proyecto-overlay');
+}
+
+function actualizarCamposTipoCobro() {
+  const tipo = document.getElementById('proyecto-tipo-cobro').value;
+  document.getElementById('campo-tarifa-hora').classList.toggle('hidden', tipo !== 'hora');
+  document.getElementById('campo-precio-fijo').classList.toggle('hidden', tipo !== 'fijo');
+}
+
+document.getElementById('proyecto-tipo-cobro').addEventListener('change', actualizarCamposTipoCobro);
+document.getElementById('btn-nuevo-proyecto').addEventListener('click', () => abrirModalProyecto(null));
 
 document.getElementById('form-proyecto').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -191,86 +648,172 @@ document.getElementById('form-proyecto').addEventListener('submit', async (e) =>
       await api('/api/proyectos', { method: 'POST', body: JSON.stringify(payload) });
       showToast('Proyecto creado');
     }
-    resetForm(form);
-    await cargarProyectos();
-    await cargarEntradas();
-    await cargarGastos();
+    closeModal('modal-proyecto-overlay');
+    await cargarProyectosDeCliente(clienteActualId);
   } catch (err) {
     showToast(err.message, true);
   }
 });
 
-document.querySelector('#tabla-proyectos tbody').addEventListener('click', async (e) => {
-  const editId = e.target.dataset.editProyecto;
-  const delId = e.target.dataset.delProyecto;
-  if (editId) {
-    const p = state.proyectos.find((x) => x.id === Number(editId));
-    const form = document.getElementById('form-proyecto');
-    form.id.value = p.id;
-    form.cliente_id.value = p.cliente_id;
-    form.nombre.value = p.nombre;
-    form.tipo_cobro.value = p.tipo_cobro;
-    form.tarifa_hora.value = p.tarifa_hora ?? '';
-    form.precio_fijo.value = p.precio_fijo ?? '';
-    form.estado.value = p.estado;
-  }
-  if (delId) {
-    if (!confirm('¿Borrar este proyecto? Esto también borrará sus horas y gastos asociados.')) return;
-    try {
-      await api(`/api/proyectos/${delId}`, { method: 'DELETE' });
-      showToast('Proyecto eliminado');
-      await cargarProyectos();
-      await cargarEntradas();
-      await cargarGastos();
-    } catch (err) {
-      showToast(err.message, true);
+async function eliminarProyecto(id) {
+  if (!confirm('¿Eliminar este proyecto? Se eliminarán también sus horas y gastos asociados.')) return;
+  try {
+    await api(`/api/proyectos/${id}`, { method: 'DELETE' });
+    showToast('Proyecto eliminado');
+    delete cacheRentabilidad[id];
+    delete cacheGastos[id];
+    delete cacheEntradas[id];
+    detalleAbierto.delete(id);
+    if (activeTimer && activeTimer.proyectoId === id) {
+      activeTimer = null;
+      guardarTimerEnStorage(null);
     }
+    await cargarProyectosDeCliente(clienteActualId);
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+// ---------- Delegación de eventos en grid de proyectos ----------
+
+document.getElementById('grid-proyectos').addEventListener('click', (e) => {
+  const editId = e.target.closest('[data-edit-proyecto]')?.dataset.editProyecto;
+  const delId = e.target.closest('[data-del-proyecto]')?.dataset.delProyecto;
+  const toggleId = e.target.closest('[data-toggle-detalle]')?.dataset.toggleDetalle;
+  const delGastoId = e.target.closest('[data-del-gasto]')?.dataset.delGasto;
+  const delTiempoId = e.target.closest('[data-del-tiempo]')?.dataset.delTiempo;
+  const editTiempoId = e.target.closest('[data-edit-tiempo]')?.dataset.editTiempo;
+  const cancelTiempoId = e.target.closest('[data-cancelar-tiempo]')?.dataset.cancelarTiempo;
+  const timerStartId = e.target.closest('[data-timer-start]')?.dataset.timerStart;
+  const timerStopId = e.target.closest('[data-timer-stop]')?.dataset.timerStop;
+
+  if (editId) {
+    const proyecto = proyectosActuales.find((p) => p.id === Number(editId));
+    abrirModalProyecto(proyecto);
+  } else if (delId) {
+    eliminarProyecto(Number(delId));
+  } else if (toggleId) {
+    toggleDetalleProyecto(Number(toggleId));
+  } else if (delGastoId) {
+    eliminarGasto(Number(delGastoId));
+  } else if (delTiempoId) {
+    eliminarTiempo(Number(delTiempoId));
+  } else if (editTiempoId) {
+    editarTiempo(Number(editTiempoId));
+  } else if (cancelTiempoId) {
+    cancelarEdicionTiempo(Number(cancelTiempoId));
+  } else if (timerStartId) {
+    iniciarTimer(Number(timerStartId));
+  } else if (timerStopId) {
+    detenerTimer(Number(timerStopId));
   }
 });
 
-// ---------- Entradas de tiempo ----------
+document.getElementById('grid-proyectos').addEventListener('submit', async (e) => {
+  if (e.target.classList.contains('form-tiempo')) {
+    e.preventDefault();
+    await guardarTiempo(e.target);
+  } else if (e.target.classList.contains('form-gasto')) {
+    e.preventDefault();
+    await agregarGasto(e.target);
+  }
+});
 
-async function cargarEntradas() {
-  state.entradas = await api('/api/entradas-tiempo');
-  renderEntradas();
+async function toggleDetalleProyecto(proyectoId) {
+  const card = document.querySelector(`.proyecto-card[data-proyecto-id="${proyectoId}"]`);
+  const detalle = document.getElementById(`detalle-${proyectoId}`);
+  const btn = card.querySelector('[data-toggle-detalle]');
+
+  if (detalleAbierto.has(proyectoId)) {
+    detalleAbierto.delete(proyectoId);
+    card.classList.remove('abierto');
+    detalle.classList.add('hidden');
+    btn.textContent = 'Ver detalle y gastos';
+    return;
+  }
+
+  detalleAbierto.add(proyectoId);
+  card.classList.add('abierto');
+  detalle.classList.remove('hidden');
+  btn.textContent = 'Ocultar detalle';
+
+  await Promise.all([cargarGastos(proyectoId), cargarEntradas(proyectoId)]);
 }
 
-function nombreProyecto(id) {
-  const p = state.proyectos.find((x) => x.id === id);
-  return p ? p.nombre : `#${id}`;
+// ---------- Entradas de tiempo (dentro del detalle) ----------
+
+async function cargarEntradas(proyectoId) {
+  const entradas = await api(`/api/entradas-tiempo?proyecto_id=${proyectoId}`);
+  cacheEntradas[proyectoId] = entradas;
+  renderEntradas(proyectoId);
 }
 
-function renderEntradas() {
-  const tbody = document.querySelector('#tabla-tiempo tbody');
-  tbody.innerHTML = state.entradas
+function renderEntradas(proyectoId) {
+  const tbody = document.getElementById(`lista-tiempo-${proyectoId}`);
+  if (!tbody) return;
+  const entradas = cacheEntradas[proyectoId] || [];
+  if (entradas.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="mini-empty">Sin horas registradas.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = entradas
     .map(
       (t) => `
       <tr>
-        <td>${t.id}</td>
-        <td>${escapeHtml(nombreProyecto(t.proyecto_id))}</td>
-        <td>${t.fecha}</td>
-        <td>${t.horas}</td>
-        <td>${escapeHtml(t.descripcion || '')}</td>
-        <td>${t.origen}</td>
-        <td class="row-actions">
-          <button class="btn-icon" data-edit-tiempo="${t.id}">Editar</button>
-          <button class="btn-icon danger" data-del-tiempo="${t.id}">Borrar</button>
+        <td>${fechaCorta(t.fecha)}</td>
+        <td>${t.horas} h</td>
+        <td class="col-descripcion">${escapeHtml(t.descripcion || '—')}</td>
+        <td><span class="badge-origen badge-origen-${t.origen}">${t.origen}</span></td>
+        <td>
+          <div class="row-actions-table">
+            <button class="btn-icon" data-edit-tiempo="${t.id}" title="Editar">&#9998;</button>
+            <button class="btn-icon danger" data-del-tiempo="${t.id}" title="Eliminar">&times;</button>
+          </div>
         </td>
       </tr>`
     )
     .join('');
 }
 
-document.getElementById('form-tiempo').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = e.target;
+function buscarProyectoDeEntrada(id) {
+  const pid = Object.keys(cacheEntradas).find((key) => cacheEntradas[key].some((t) => t.id === id));
+  return pid ? Number(pid) : null;
+}
+
+function editarTiempo(id) {
+  const proyectoId = buscarProyectoDeEntrada(id);
+  if (proyectoId === null) return;
+  const entrada = cacheEntradas[proyectoId].find((t) => t.id === id);
+  const form = document.querySelector(`.form-tiempo[data-proyecto-id="${proyectoId}"]`);
+  if (!form || !entrada) return;
+
+  form.id.value = entrada.id;
+  form.origen.value = entrada.origen;
+  form.fecha.value = entrada.fecha;
+  form.horas.value = entrada.horas;
+  form.descripcion.value = entrada.descripcion || '';
+  form.querySelector('[data-submit-tiempo]').textContent = 'Guardar cambios';
+  form.querySelector('[data-cancelar-tiempo]').classList.remove('hidden');
+  form.fecha.focus();
+}
+
+function cancelarEdicionTiempo(proyectoId) {
+  const form = document.querySelector(`.form-tiempo[data-proyecto-id="${proyectoId}"]`);
+  if (!form) return;
+  form.reset();
+  form.querySelector('[data-submit-tiempo]').textContent = 'Agregar';
+  form.querySelector('[data-cancelar-tiempo]').classList.add('hidden');
+}
+
+async function guardarTiempo(form) {
+  const proyectoId = Number(form.dataset.proyectoId);
   const id = form.id.value;
   const payload = {
-    proyecto_id: Number(form.proyecto_id.value),
+    proyecto_id: proyectoId,
     fecha: form.fecha.value,
     horas: Number(form.horas.value),
     descripcion: form.descripcion.value,
-    origen: form.origen.value,
+    origen: form.origen.value || 'manual',
   };
   try {
     if (id) {
@@ -278,158 +821,98 @@ document.getElementById('form-tiempo').addEventListener('submit', async (e) => {
       showToast('Entrada actualizada');
     } else {
       await api('/api/entradas-tiempo', { method: 'POST', body: JSON.stringify(payload) });
-      showToast('Entrada creada');
+      showToast('Horas registradas');
     }
-    resetForm(form);
-    await cargarEntradas();
+    cancelarEdicionTiempo(proyectoId);
+    await cargarEntradas(proyectoId);
+    await cargarRentabilidad(proyectoId);
   } catch (err) {
     showToast(err.message, true);
   }
-});
-
-document.querySelector('#tabla-tiempo tbody').addEventListener('click', async (e) => {
-  const editId = e.target.dataset.editTiempo;
-  const delId = e.target.dataset.delTiempo;
-  if (editId) {
-    const t = state.entradas.find((x) => x.id === Number(editId));
-    const form = document.getElementById('form-tiempo');
-    form.id.value = t.id;
-    form.proyecto_id.value = t.proyecto_id;
-    form.fecha.value = t.fecha;
-    form.horas.value = t.horas;
-    form.descripcion.value = t.descripcion || '';
-    form.origen.value = t.origen;
-  }
-  if (delId) {
-    if (!confirm('¿Borrar esta entrada de tiempo?')) return;
-    try {
-      await api(`/api/entradas-tiempo/${delId}`, { method: 'DELETE' });
-      showToast('Entrada eliminada');
-      await cargarEntradas();
-    } catch (err) {
-      showToast(err.message, true);
-    }
-  }
-});
-
-// ---------- Gastos ----------
-
-async function cargarGastos() {
-  state.gastos = await api('/api/gastos');
-  renderGastos();
 }
 
-function renderGastos() {
-  const tbody = document.querySelector('#tabla-gastos tbody');
-  tbody.innerHTML = state.gastos
+async function eliminarTiempo(id) {
+  if (!confirm('¿Eliminar esta entrada de tiempo?')) return;
+  const proyectoId = buscarProyectoDeEntrada(id);
+  try {
+    await api(`/api/entradas-tiempo/${id}`, { method: 'DELETE' });
+    showToast('Entrada eliminada');
+    if (proyectoId !== null) {
+      await cargarEntradas(proyectoId);
+      await cargarRentabilidad(proyectoId);
+    }
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+// ---------- Gastos (dentro del detalle) ----------
+
+async function cargarGastos(proyectoId) {
+  const gastos = await api(`/api/gastos?proyecto_id=${proyectoId}`);
+  cacheGastos[proyectoId] = gastos;
+  renderGastos(proyectoId);
+}
+
+function renderGastos(proyectoId) {
+  const lista = document.getElementById(`lista-gastos-${proyectoId}`);
+  if (!lista) return;
+  const gastos = cacheGastos[proyectoId] || [];
+  if (gastos.length === 0) {
+    lista.innerHTML = '<li class="mini-empty">Sin gastos registrados.</li>';
+    return;
+  }
+  lista.innerHTML = gastos
     .map(
       (g) => `
-      <tr>
-        <td>${g.id}</td>
-        <td>${escapeHtml(nombreProyecto(g.proyecto_id))}</td>
-        <td>${escapeHtml(g.descripcion)}</td>
-        <td>${money(g.monto)}</td>
-        <td class="row-actions">
-          <button class="btn-icon" data-edit-gasto="${g.id}">Editar</button>
-          <button class="btn-icon danger" data-del-gasto="${g.id}">Borrar</button>
-        </td>
-      </tr>`
+      <li>
+        <div class="item-main">
+          <span class="item-title">${escapeHtml(g.descripcion)}</span>
+          <span class="item-sub">${fechaCorta(g.fecha)}</span>
+        </div>
+        <span class="item-value">${money(g.monto)}</span>
+        <button class="btn-icon danger" data-del-gasto="${g.id}" title="Eliminar">&times;</button>
+      </li>`
     )
     .join('');
 }
 
-document.getElementById('form-gasto').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = e.target;
-  const id = form.id.value;
+async function agregarGasto(form) {
+  const proyectoId = Number(form.dataset.proyectoId);
   const payload = {
-    proyecto_id: Number(form.proyecto_id.value),
+    proyecto_id: proyectoId,
+    fecha: form.fecha.value,
     descripcion: form.descripcion.value,
     monto: Number(form.monto.value),
   };
   try {
-    if (id) {
-      await api(`/api/gastos/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
-      showToast('Gasto actualizado');
-    } else {
-      await api('/api/gastos', { method: 'POST', body: JSON.stringify(payload) });
-      showToast('Gasto creado');
-    }
-    resetForm(form);
-    await cargarGastos();
+    await api('/api/gastos', { method: 'POST', body: JSON.stringify(payload) });
+    form.reset();
+    showToast('Gasto agregado');
+    await cargarGastos(proyectoId);
+    await cargarRentabilidad(proyectoId);
   } catch (err) {
     showToast(err.message, true);
   }
-});
+}
 
-document.querySelector('#tabla-gastos tbody').addEventListener('click', async (e) => {
-  const editId = e.target.dataset.editGasto;
-  const delId = e.target.dataset.delGasto;
-  if (editId) {
-    const g = state.gastos.find((x) => x.id === Number(editId));
-    const form = document.getElementById('form-gasto');
-    form.id.value = g.id;
-    form.proyecto_id.value = g.proyecto_id;
-    form.descripcion.value = g.descripcion;
-    form.monto.value = g.monto;
-  }
-  if (delId) {
-    if (!confirm('¿Borrar este gasto?')) return;
-    try {
-      await api(`/api/gastos/${delId}`, { method: 'DELETE' });
-      showToast('Gasto eliminado');
-      await cargarGastos();
-    } catch (err) {
-      showToast(err.message, true);
-    }
-  }
-});
-
-// ---------- Rentabilidad ----------
-
-document.getElementById('btn-ver-rentabilidad').addEventListener('click', async () => {
-  const select = document.getElementById('select-rentabilidad-proyecto');
-  const proyectoId = select.value;
-  if (!proyectoId) {
-    showToast('No hay proyectos disponibles', true);
-    return;
-  }
+async function eliminarGasto(id) {
+  if (!confirm('¿Eliminar este gasto?')) return;
+  const proyectoId = Object.keys(cacheGastos).find((pid) => cacheGastos[pid].some((g) => g.id === id));
   try {
-    const data = await api(`/api/proyectos/${proyectoId}/rentabilidad`);
-    document.getElementById('rent-nombre').textContent = data.nombre;
-    document.getElementById('rent-horas').textContent = `${data.total_horas} h`;
-    document.getElementById('rent-ingreso').textContent = money(data.ingreso_total);
-    document.getElementById('rent-gastos').textContent = money(data.total_gastos);
-    document.getElementById('rent-margen').textContent = money(data.margen);
-    document.getElementById('rentabilidad-resultado').classList.remove('hidden');
+    await api(`/api/gastos/${id}`, { method: 'DELETE' });
+    showToast('Gasto eliminado');
+    if (proyectoId) {
+      await cargarGastos(Number(proyectoId));
+      await cargarRentabilidad(Number(proyectoId));
+    }
   } catch (err) {
     showToast(err.message, true);
   }
-});
-
-// ---------- Cancelar edición ----------
-
-document.querySelectorAll('[data-cancel]').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    resetForm(document.getElementById(btn.dataset.cancel));
-  });
-});
-
-// ---------- Helpers ----------
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str ?? '';
-  return div.innerHTML;
 }
 
 // ---------- Init ----------
 
-async function init() {
-  await cargarClientes();
-  await cargarProyectos();
-  await cargarEntradas();
-  await cargarGastos();
-}
-
-init().catch((err) => showToast(err.message, true));
+activeTimer = cargarTimerGuardado();
+cargarClientes().catch((err) => showToast(err.message, true));
+cargarDashboard();

@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS gastos (
   proyecto_id INTEGER NOT NULL,
   descripcion TEXT NOT NULL,
   monto REAL NOT NULL,
+  fecha TEXT NOT NULL DEFAULT (date('now')),
   FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE
 );
 
