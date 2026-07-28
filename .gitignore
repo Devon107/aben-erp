@@ -1,0 +1,4 @@
+node_modules/
+data/tracker.db
+data/*.db-journal
+*.log
