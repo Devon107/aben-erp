@@ -137,6 +137,43 @@ function pedirConfirmacion(mensaje) {
   });
 }
 
+// Input de texto en modal (reemplaza prompt() del navegador).
+// Devuelve una Promise<string|null>: null si se cancela, el valor (posiblemente vacío) si se confirma.
+function pedirTexto(mensaje, valorInicial = '') {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('modal-prompt-overlay');
+    const form = document.getElementById('form-prompt');
+    const input = document.getElementById('prompt-input');
+    const btnCancelar = document.getElementById('btn-prompt-cancelar');
+    const btnCerrar = document.getElementById('btn-prompt-cerrar');
+
+    document.getElementById('prompt-mensaje').textContent = mensaje;
+    input.value = valorInicial;
+    openModal('modal-prompt-overlay');
+    setTimeout(() => input.focus(), 0);
+
+    function terminar(resultado) {
+      form.removeEventListener('submit', onSubmit);
+      btnCancelar.removeEventListener('click', onCancelar);
+      btnCerrar.removeEventListener('click', onCancelar);
+      overlay.removeEventListener('click', onBackdrop);
+      document.removeEventListener('keydown', onKeydown);
+      closeModal('modal-prompt-overlay');
+      resolve(resultado);
+    }
+    function onSubmit(e) { e.preventDefault(); terminar(input.value); }
+    function onCancelar() { terminar(null); }
+    function onBackdrop(e) { if (e.target === overlay) terminar(null); }
+    function onKeydown(e) { if (e.key === 'Escape') terminar(null); }
+
+    form.addEventListener('submit', onSubmit);
+    btnCancelar.addEventListener('click', onCancelar);
+    btnCerrar.addEventListener('click', onCancelar);
+    overlay.addEventListener('click', onBackdrop);
+    document.addEventListener('keydown', onKeydown);
+  });
+}
+
 // ---------- Timer (cronómetro) ----------
 
 const TIMER_STORAGE_KEY = 'freelance-tracker:activeTimer';
@@ -190,6 +227,14 @@ function tickTimerDisplay() {
 
 setInterval(tickTimerDisplay, 1000);
 
+// Sincroniza el cronómetro entre pestañas: 'storage' solo dispara en pestañas
+// distintas a la que hizo el cambio, así que no compite con las acciones locales.
+window.addEventListener('storage', (e) => {
+  if (e.key !== TIMER_STORAGE_KEY) return;
+  activeTimer = e.newValue ? JSON.parse(e.newValue) : null;
+  refrescarWidgetsTimer();
+});
+
 function iniciarTimer(proyectoId) {
   if (activeTimer) {
     showToast('Ya hay un cronómetro activo en otro proyecto', true);
@@ -207,7 +252,7 @@ async function detenerTimer(proyectoId) {
   const ahora = new Date();
   const horas = Math.max(0.01, Math.round(((ahora - inicio) / 3600000) * 100) / 100);
 
-  const descripcion = window.prompt('Descripción breve de la tarea realizada:', '');
+  const descripcion = await pedirTexto('Descripción breve de la tarea realizada:');
   if (descripcion === null) return; // el usuario canceló: el cronómetro sigue corriendo
 
   try {
@@ -330,32 +375,6 @@ document.getElementById('dashboard-desde').addEventListener('change', () => {
 document.getElementById('dashboard-hasta').addEventListener('change', () => {
   if (rangoActual()) cargarDashboard();
 });
-
-function calcularAlertas(clientesData) {
-  const conHoras = clientesData.filter((c) => c.total_horas > 0);
-  let promedioHoras = 0;
-  let promedioMargenPorHora = 0;
-  if (conHoras.length > 0) {
-    promedioHoras = conHoras.reduce((s, c) => s + c.total_horas, 0) / conHoras.length;
-    promedioMargenPorHora =
-      conHoras.reduce((s, c) => s + c.margen / c.total_horas, 0) / conHoras.length;
-  }
-
-  return clientesData.map((c) => {
-    const margenPorHora = c.total_horas > 0 ? c.margen / c.total_horas : null;
-    let alerta = null;
-    if (c.margen < 0) {
-      alerta = 'perdida';
-    } else if (
-      c.total_horas > 0 &&
-      c.total_horas >= promedioHoras &&
-      margenPorHora < promedioMargenPorHora
-    ) {
-      alerta = 'bajo-rendimiento';
-    }
-    return { ...c, alerta, margen_por_hora: margenPorHora };
-  });
-}
 
 function alertaBadgeHtml(alerta) {
   if (alerta === 'perdida') {

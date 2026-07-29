@@ -2,16 +2,19 @@ const path = require('node:path');
 const express = require('express');
 const { initDb } = require('./db/init');
 
-const db = initDb();
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-
 function notFound(res, entity) {
   return res.status(404).json({ error: `${entity} no encontrado` });
 }
+
+function esNumeroNoNegativo(v) {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0;
+}
+
+function createApp(db) {
+  const app = express();
+
+  app.use(express.json());
+  app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------- Clientes ----------
 
@@ -95,6 +98,12 @@ app.post('/api/proyectos', (req, res) => {
   if (!['hora', 'fijo'].includes(tipo_cobro)) {
     return res.status(400).json({ error: 'tipo_cobro invalido' });
   }
+  if (tarifa_hora != null && !esNumeroNoNegativo(tarifa_hora)) {
+    return res.status(400).json({ error: 'tarifa_hora debe ser un numero no negativo' });
+  }
+  if (precio_fijo != null && !esNumeroNoNegativo(precio_fijo)) {
+    return res.status(400).json({ error: 'precio_fijo debe ser un numero no negativo' });
+  }
   const cliente = db.prepare('SELECT id FROM clientes WHERE id = ?').get(cliente_id);
   if (!cliente) return res.status(400).json({ error: 'cliente_id no existe' });
 
@@ -129,6 +138,12 @@ app.put('/api/proyectos/:id', (req, res) => {
   }
   if (!['activo', 'completado', 'pausado'].includes(estado)) {
     return res.status(400).json({ error: 'estado invalido' });
+  }
+  if (tarifa_hora != null && !esNumeroNoNegativo(tarifa_hora)) {
+    return res.status(400).json({ error: 'tarifa_hora debe ser un numero no negativo' });
+  }
+  if (precio_fijo != null && !esNumeroNoNegativo(precio_fijo)) {
+    return res.status(400).json({ error: 'precio_fijo debe ser un numero no negativo' });
   }
 
   db.prepare(
@@ -212,6 +227,9 @@ app.post('/api/entradas-tiempo', (req, res) => {
   if (!proyecto_id || !fecha || horas === undefined) {
     return res.status(400).json({ error: 'proyecto_id, fecha y horas son requeridos' });
   }
+  if (typeof horas !== 'number' || !Number.isFinite(horas) || horas <= 0) {
+    return res.status(400).json({ error: 'horas debe ser un numero mayor a 0' });
+  }
   const proyecto = db.prepare('SELECT id FROM proyectos WHERE id = ?').get(proyecto_id);
   if (!proyecto) return res.status(400).json({ error: 'proyecto_id no existe' });
 
@@ -242,6 +260,9 @@ app.put('/api/entradas-tiempo/:id', (req, res) => {
 
   if (!['timer', 'manual'].includes(origen)) {
     return res.status(400).json({ error: 'origen invalido' });
+  }
+  if (typeof horas !== 'number' || !Number.isFinite(horas) || horas <= 0) {
+    return res.status(400).json({ error: 'horas debe ser un numero mayor a 0' });
   }
 
   db.prepare(
@@ -285,6 +306,9 @@ app.post('/api/gastos', (req, res) => {
   if (!proyecto_id || !descripcion || monto === undefined) {
     return res.status(400).json({ error: 'proyecto_id, descripcion y monto son requeridos' });
   }
+  if (!esNumeroNoNegativo(monto)) {
+    return res.status(400).json({ error: 'monto debe ser un numero no negativo' });
+  }
   const proyecto = db.prepare('SELECT id FROM proyectos WHERE id = ?').get(proyecto_id);
   if (!proyecto) return res.status(400).json({ error: 'proyecto_id no existe' });
 
@@ -305,6 +329,10 @@ app.put('/api/gastos/:id', (req, res) => {
   const descripcion = req.body.descripcion ?? existing.descripcion;
   const monto = req.body.monto !== undefined ? req.body.monto : existing.monto;
   const fecha = req.body.fecha ?? existing.fecha;
+
+  if (!esNumeroNoNegativo(monto)) {
+    return res.status(400).json({ error: 'monto debe ser un numero no negativo' });
+  }
 
   db.prepare('UPDATE gastos SET proyecto_id = ?, descripcion = ?, monto = ?, fecha = ? WHERE id = ?').run(
     proyecto_id,
@@ -387,6 +415,28 @@ app.get('/api/dashboard', (req, res) => {
   res.json({ desde, hasta, clientes: clientesResultado });
 });
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
-});
+  // Manejo de errores: asegura que la API siempre responda JSON, incluso ante
+  // body JSON malformado (express.json() lo reporta como error, no como req.body vacío).
+  app.use((err, req, res, next) => {
+    if (err.type === 'entity.parse.failed') {
+      return res.status(400).json({ error: 'JSON invalido' });
+    }
+    console.error(err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  });
+
+  return app;
+}
+
+module.exports = { createApp };
+
+// Solo levanta el servidor si se ejecuta directamente (node server.js), no cuando
+// los tests importan createApp() para probar la API sin abrir un puerto real.
+if (require.main === module) {
+  const db = initDb();
+  const app = createApp(db);
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  });
+}

@@ -5,13 +5,13 @@ const Database = require('better-sqlite3');
 const DB_PATH = path.join(__dirname, '..', 'data', 'tracker.db');
 const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
 
-function initDb() {
-  const dataDir = path.dirname(DB_PATH);
+function initDb(dbPath = DB_PATH) {
+  const dataDir = path.dirname(dbPath);
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
 
-  const db = new Database(DB_PATH);
+  const db = new Database(dbPath);
   db.pragma('foreign_keys = ON');
 
   const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');

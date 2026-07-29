@@ -198,6 +198,26 @@
     </div>
   </div>
 
+  <!-- MODAL PROMPT (input de texto genérico, ej. descripción al detener el cronómetro) -->
+  <div class="modal-overlay hidden" id="modal-prompt-overlay">
+    <div class="modal modal-confirmar">
+      <div class="modal-header">
+        <h2 id="prompt-titulo">Descripción</h2>
+        <button class="btn-close" type="button" id="btn-prompt-cerrar">&times;</button>
+      </div>
+      <form id="form-prompt">
+        <label>
+          <span id="prompt-mensaje"></span>
+          <input type="text" id="prompt-input" />
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" id="btn-prompt-cancelar">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- MODAL CONFIRMACIÓN (usado para eliminar clientes, proyectos, gastos y entradas de tiempo) -->
   <div class="modal-overlay hidden" id="modal-confirmar-overlay">
     <div class="modal modal-confirmar">
@@ -215,6 +235,7 @@
 
   <div id="toast" class="toast hidden"></div>
 
+  <script src="logic.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
