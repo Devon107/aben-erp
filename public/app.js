@@ -60,6 +60,15 @@ function isoDateLocal(d) {
   return `${y}-${m}-${dia}`;
 }
 
+function horasYMinutosADecimal(horas, minutos) {
+  return Math.round((Number(horas || 0) + Number(minutos || 0) / 60) * 100) / 100;
+}
+
+function decimalAHorasYMinutos(decimal) {
+  const totalMinutos = Math.round(Number(decimal || 0) * 60);
+  return { horas: Math.floor(totalMinutos / 60), minutos: totalMinutos % 60 };
+}
+
 function formatElapsed(ms) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const h = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
@@ -93,6 +102,40 @@ document.addEventListener('keydown', (e) => {
     document.querySelectorAll('.modal-overlay:not(.hidden)').forEach((o) => o.classList.add('hidden'));
   }
 });
+
+// Confirmación de borrado en modal (reemplaza confirm() del navegador).
+// Devuelve una Promise<boolean> que resuelve true solo si se confirma explícitamente.
+function pedirConfirmacion(mensaje) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('modal-confirmar-overlay');
+    const btnSi = document.getElementById('btn-confirmar-si');
+    const btnNo = document.getElementById('btn-confirmar-no');
+    const btnX = document.getElementById('btn-confirmar-cerrar');
+
+    document.getElementById('confirmar-mensaje').textContent = mensaje;
+    openModal('modal-confirmar-overlay');
+
+    function terminar(resultado) {
+      btnSi.removeEventListener('click', onSi);
+      btnNo.removeEventListener('click', onNo);
+      btnX.removeEventListener('click', onNo);
+      overlay.removeEventListener('click', onBackdrop);
+      document.removeEventListener('keydown', onKeydown);
+      closeModal('modal-confirmar-overlay');
+      resolve(resultado);
+    }
+    function onSi() { terminar(true); }
+    function onNo() { terminar(false); }
+    function onBackdrop(e) { if (e.target === overlay) terminar(false); }
+    function onKeydown(e) { if (e.key === 'Escape') terminar(false); }
+
+    btnSi.addEventListener('click', onSi);
+    btnNo.addEventListener('click', onNo);
+    btnX.addEventListener('click', onNo);
+    overlay.addEventListener('click', onBackdrop);
+    document.addEventListener('keydown', onKeydown);
+  });
+}
 
 // ---------- Timer (cronómetro) ----------
 
@@ -468,7 +511,7 @@ document.getElementById('form-cliente').addEventListener('submit', async (e) => 
 });
 
 async function eliminarCliente(id) {
-  if (!confirm('¿Eliminar este cliente? Se eliminarán también sus proyectos, horas y gastos asociados.')) return;
+  if (!(await pedirConfirmacion('¿Eliminar este cliente? Se eliminarán también sus proyectos, horas y gastos asociados.'))) return;
   try {
     await api(`/api/clientes/${id}`, { method: 'DELETE' });
     showToast('Cliente eliminado');
@@ -535,13 +578,11 @@ function renderProyectoCard(p) {
           </div>
 
           <form class="subform form-tiempo" data-proyecto-id="${p.id}">
-            <input type="hidden" name="id" />
-            <input type="hidden" name="origen" value="manual" />
             <input type="date" name="fecha" required />
-            <input type="number" step="0.25" min="0" name="horas" placeholder="Horas (ej. 1.5)" required />
+            <input type="number" class="input-horas" name="horas" placeholder="h" min="0" step="1" required />
+            <input type="number" class="input-minutos" name="minutos" placeholder="min" min="0" max="59" step="1" required />
             <input type="text" name="descripcion" placeholder="Descripción" />
-            <button type="submit" class="btn btn-primary btn-sm" data-submit-tiempo>Agregar</button>
-            <button type="button" class="btn btn-secondary btn-sm hidden" data-cancelar-tiempo="${p.id}">Cancelar</button>
+            <button type="submit" class="btn btn-primary btn-sm">Agregar</button>
           </form>
 
           <div class="tabla-wrap">
@@ -656,7 +697,7 @@ document.getElementById('form-proyecto').addEventListener('submit', async (e) =>
 });
 
 async function eliminarProyecto(id) {
-  if (!confirm('¿Eliminar este proyecto? Se eliminarán también sus horas y gastos asociados.')) return;
+  if (!(await pedirConfirmacion('¿Eliminar este proyecto? Se eliminarán también sus horas y gastos asociados.'))) return;
   try {
     await api(`/api/proyectos/${id}`, { method: 'DELETE' });
     showToast('Proyecto eliminado');
@@ -683,7 +724,6 @@ document.getElementById('grid-proyectos').addEventListener('click', (e) => {
   const delGastoId = e.target.closest('[data-del-gasto]')?.dataset.delGasto;
   const delTiempoId = e.target.closest('[data-del-tiempo]')?.dataset.delTiempo;
   const editTiempoId = e.target.closest('[data-edit-tiempo]')?.dataset.editTiempo;
-  const cancelTiempoId = e.target.closest('[data-cancelar-tiempo]')?.dataset.cancelarTiempo;
   const timerStartId = e.target.closest('[data-timer-start]')?.dataset.timerStart;
   const timerStopId = e.target.closest('[data-timer-stop]')?.dataset.timerStop;
 
@@ -700,8 +740,6 @@ document.getElementById('grid-proyectos').addEventListener('click', (e) => {
     eliminarTiempo(Number(delTiempoId));
   } else if (editTiempoId) {
     editarTiempo(Number(editTiempoId));
-  } else if (cancelTiempoId) {
-    cancelarEdicionTiempo(Number(cancelTiempoId));
   } else if (timerStartId) {
     iniciarTimer(Number(timerStartId));
   } else if (timerStopId) {
@@ -712,7 +750,7 @@ document.getElementById('grid-proyectos').addEventListener('click', (e) => {
 document.getElementById('grid-proyectos').addEventListener('submit', async (e) => {
   if (e.target.classList.contains('form-tiempo')) {
     e.preventDefault();
-    await guardarTiempo(e.target);
+    await agregarTiempo(e.target);
   } else if (e.target.classList.contains('form-gasto')) {
     e.preventDefault();
     await agregarGasto(e.target);
@@ -780,50 +818,28 @@ function buscarProyectoDeEntrada(id) {
   return pid ? Number(pid) : null;
 }
 
-function editarTiempo(id) {
-  const proyectoId = buscarProyectoDeEntrada(id);
-  if (proyectoId === null) return;
-  const entrada = cacheEntradas[proyectoId].find((t) => t.id === id);
-  const form = document.querySelector(`.form-tiempo[data-proyecto-id="${proyectoId}"]`);
-  if (!form || !entrada) return;
-
-  form.id.value = entrada.id;
-  form.origen.value = entrada.origen;
-  form.fecha.value = entrada.fecha;
-  form.horas.value = entrada.horas;
-  form.descripcion.value = entrada.descripcion || '';
-  form.querySelector('[data-submit-tiempo]').textContent = 'Guardar cambios';
-  form.querySelector('[data-cancelar-tiempo]').classList.remove('hidden');
-  form.fecha.focus();
-}
-
-function cancelarEdicionTiempo(proyectoId) {
-  const form = document.querySelector(`.form-tiempo[data-proyecto-id="${proyectoId}"]`);
-  if (!form) return;
-  form.reset();
-  form.querySelector('[data-submit-tiempo]').textContent = 'Agregar';
-  form.querySelector('[data-cancelar-tiempo]').classList.add('hidden');
-}
-
-async function guardarTiempo(form) {
+// Agregar es siempre una entrada nueva: este formulario inline no comparte
+// estado con la edición (que vive en su propio modal, ver más abajo). Así se
+// evita el bug donde, al quedar el formulario "enganchado" en modo edición de
+// otra entrada, un alta terminaba sobrescribiendo esa entrada en vez de crear una nueva.
+async function agregarTiempo(form) {
   const proyectoId = Number(form.dataset.proyectoId);
-  const id = form.id.value;
+  const horas = horasYMinutosADecimal(form.horas.value, form.minutos.value);
+  if (horas <= 0) {
+    showToast('Ingresá al menos 1 minuto', true);
+    return;
+  }
   const payload = {
     proyecto_id: proyectoId,
     fecha: form.fecha.value,
-    horas: Number(form.horas.value),
+    horas,
     descripcion: form.descripcion.value,
-    origen: form.origen.value || 'manual',
+    origen: 'manual',
   };
   try {
-    if (id) {
-      await api(`/api/entradas-tiempo/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
-      showToast('Entrada actualizada');
-    } else {
-      await api('/api/entradas-tiempo', { method: 'POST', body: JSON.stringify(payload) });
-      showToast('Horas registradas');
-    }
-    cancelarEdicionTiempo(proyectoId);
+    await api('/api/entradas-tiempo', { method: 'POST', body: JSON.stringify(payload) });
+    form.reset();
+    showToast('Horas registradas');
     await cargarEntradas(proyectoId);
     await cargarRentabilidad(proyectoId);
   } catch (err) {
@@ -831,8 +847,53 @@ async function guardarTiempo(form) {
   }
 }
 
+function editarTiempo(id) {
+  const proyectoId = buscarProyectoDeEntrada(id);
+  if (proyectoId === null) return;
+  const entrada = cacheEntradas[proyectoId].find((t) => t.id === id);
+  if (!entrada) return;
+
+  const { horas, minutos } = decimalAHorasYMinutos(entrada.horas);
+  const form = document.getElementById('form-editar-tiempo');
+  form.id.value = entrada.id;
+  form.proyecto_id.value = proyectoId;
+  form.origen.value = entrada.origen;
+  form.fecha.value = entrada.fecha;
+  form.horas.value = horas;
+  form.minutos.value = minutos;
+  form.descripcion.value = entrada.descripcion || '';
+  openModal('modal-tiempo-overlay');
+}
+
+document.getElementById('form-editar-tiempo').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const proyectoId = Number(form.proyecto_id.value);
+  const horas = horasYMinutosADecimal(form.horas.value, form.minutos.value);
+  if (horas <= 0) {
+    showToast('Ingresá al menos 1 minuto', true);
+    return;
+  }
+  const payload = {
+    proyecto_id: proyectoId,
+    fecha: form.fecha.value,
+    horas,
+    descripcion: form.descripcion.value,
+    origen: form.origen.value,
+  };
+  try {
+    await api(`/api/entradas-tiempo/${form.id.value}`, { method: 'PUT', body: JSON.stringify(payload) });
+    showToast('Entrada actualizada');
+    closeModal('modal-tiempo-overlay');
+    await cargarEntradas(proyectoId);
+    await cargarRentabilidad(proyectoId);
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
 async function eliminarTiempo(id) {
-  if (!confirm('¿Eliminar esta entrada de tiempo?')) return;
+  if (!(await pedirConfirmacion('¿Eliminar esta entrada de tiempo?'))) return;
   const proyectoId = buscarProyectoDeEntrada(id);
   try {
     await api(`/api/entradas-tiempo/${id}`, { method: 'DELETE' });
@@ -897,7 +958,7 @@ async function agregarGasto(form) {
 }
 
 async function eliminarGasto(id) {
-  if (!confirm('¿Eliminar este gasto?')) return;
+  if (!(await pedirConfirmacion('¿Eliminar este gasto?'))) return;
   const proyectoId = Object.keys(cacheGastos).find((pid) => cacheGastos[pid].some((g) => g.id === id));
   try {
     await api(`/api/gastos/${id}`, { method: 'DELETE' });

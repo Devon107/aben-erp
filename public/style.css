@@ -186,6 +186,15 @@ main {
   background: var(--surface-2);
 }
 
+.btn-danger {
+  background: var(--red);
+  color: #fff;
+}
+
+.btn-danger:hover {
+  filter: brightness(1.1);
+}
+
 .btn-link {
   background: none;
   border: none;
@@ -447,6 +456,12 @@ main {
   flex: 1 1 90px;
 }
 
+.subform .input-horas,
+.subform .input-minutos {
+  flex: 0 1 72px;
+  min-width: 0;
+}
+
 /* ---------- Timer ---------- */
 
 .timer-widget {
@@ -657,6 +672,23 @@ input::placeholder {
   width: 100%;
   max-width: 420px;
   padding: 1.5rem;
+}
+
+.modal-confirmar {
+  max-width: 360px;
+}
+
+.modal-confirmar p {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.campo-horas-minutos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
 }
 
 .modal-header {

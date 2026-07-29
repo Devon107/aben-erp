@@ -161,6 +161,58 @@
     </div>
   </div>
 
+  <!-- MODAL EDITAR ENTRADA DE TIEMPO -->
+  <div class="modal-overlay hidden" id="modal-tiempo-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Editar entrada de tiempo</h2>
+        <button class="btn-close" type="button" data-close-modal="modal-tiempo-overlay">&times;</button>
+      </div>
+      <form id="form-editar-tiempo">
+        <input type="hidden" name="id" />
+        <input type="hidden" name="proyecto_id" />
+        <input type="hidden" name="origen" />
+        <label>
+          Fecha
+          <input type="date" name="fecha" required />
+        </label>
+        <div class="campo-horas-minutos">
+          <label>
+            Horas
+            <input type="number" name="horas" min="0" step="1" required />
+          </label>
+          <label>
+            Minutos
+            <input type="number" name="minutos" min="0" max="59" step="1" required />
+          </label>
+        </div>
+        <label>
+          Descripción
+          <input type="text" name="descripcion" placeholder="Descripción" />
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" data-close-modal="modal-tiempo-overlay">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL CONFIRMACIÓN (usado para eliminar clientes, proyectos, gastos y entradas de tiempo) -->
+  <div class="modal-overlay hidden" id="modal-confirmar-overlay">
+    <div class="modal modal-confirmar">
+      <div class="modal-header">
+        <h2>Confirmar</h2>
+        <button class="btn-close" type="button" id="btn-confirmar-cerrar">&times;</button>
+      </div>
+      <p id="confirmar-mensaje"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" id="btn-confirmar-no">Cancelar</button>
+        <button type="button" class="btn btn-danger" id="btn-confirmar-si">Eliminar</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
 
   <script src="app.js"></script>
