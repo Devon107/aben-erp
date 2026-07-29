@@ -4,7 +4,8 @@ import { fechaCorta, isoDateLocal, money } from '../../lib/format.js';
 import { useToast } from '../../components/Toast.jsx';
 import { useConfirm } from '../../components/ConfirmModal.jsx';
 
-export default function GastosList({ proyectoId, onCambio }) {
+// rango === null significa sin filtro (se muestra todo el historial).
+export default function GastosList({ proyectoId, rango, onCambio }) {
   const showToast = useToast();
   const confirmar = useConfirm();
   const [gastos, setGastos] = useState(null); // null = cargando
@@ -25,6 +26,8 @@ export default function GastosList({ proyectoId, onCambio }) {
     cargarGastos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [proyectoId]);
+
+  const gastosFiltrados = rango ? gastos?.filter((g) => g.fecha >= rango.desde && g.fecha <= rango.hasta) : gastos;
 
   async function agregar(e) {
     e.preventDefault();
@@ -57,8 +60,7 @@ export default function GastosList({ proyectoId, onCambio }) {
   }
 
   return (
-    <div className="detalle-col">
-      <h4>Gastos</h4>
+    <div className="reporte-panel">
       <form className="subform" onSubmit={agregar}>
         <input type="date" required value={fecha} onChange={(e) => setFecha(e.target.value)} />
         <input
@@ -81,10 +83,13 @@ export default function GastosList({ proyectoId, onCambio }) {
           Agregar
         </button>
       </form>
-      <ul className="mini-list">
+      <ul className="mini-list mini-list-grande">
         {gastos === null && <li className="mini-empty">Cargando...</li>}
         {gastos !== null && gastos.length === 0 && <li className="mini-empty">Sin gastos registrados.</li>}
-        {gastos?.map((g) => (
+        {gastos !== null && gastos.length > 0 && gastosFiltrados.length === 0 && (
+          <li className="mini-empty">Sin resultados para el rango seleccionado.</li>
+        )}
+        {gastosFiltrados?.map((g) => (
           <li key={g.id}>
             <div className="item-main">
               <span className="item-title">{g.descripcion}</span>

@@ -419,31 +419,6 @@ main {
   margin-top: 1rem;
 }
 
-/* expanded detail */
-
-.proyecto-detalle {
-  margin-top: 1.25rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--border);
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
-}
-
-@media (max-width: 720px) {
-  .proyecto-detalle {
-    grid-template-columns: 1fr;
-  }
-}
-
-.detalle-col h4 {
-  margin: 0 0 0.75rem;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
 .subform {
   display: flex;
   gap: 0.5rem;
@@ -491,6 +466,52 @@ main {
 .timer-widget .btn[disabled] {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ---------- Vista de detalle de proyecto (pestañas + filtro) ---------- */
+
+.reporte-controles {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 1.5rem 0 1.25rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.5rem 0.1rem;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.tabla-wrap.tabla-wrap-grande {
+  max-height: 55vh;
+}
+
+.mini-list.mini-list-grande {
+  max-height: 55vh;
 }
 
 /* ---------- Tabla de entradas de tiempo ---------- */

@@ -3,10 +3,10 @@ import { api } from '../../lib/api.js';
 import { fechaCorta, horasYMinutosADecimal } from '../../lib/format.js';
 import { useToast } from '../../components/Toast.jsx';
 import { useConfirm } from '../../components/ConfirmModal.jsx';
-import TimerWidget from './TimerWidget.jsx';
 import EntradaTiempoModal from './EntradaTiempoModal.jsx';
 
-export default function EntradasTiempoTable({ proyectoId, onCambio }) {
+// rango === null significa sin filtro (se muestra todo el historial).
+export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal = 0, onCambio }) {
   const showToast = useToast();
   const confirmar = useConfirm();
   const [entradas, setEntradas] = useState(null); // null = cargando
@@ -29,7 +29,9 @@ export default function EntradasTiempoTable({ proyectoId, onCambio }) {
   useEffect(() => {
     cargarEntradas();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [proyectoId]);
+  }, [proyectoId, refrescarSenal]);
+
+  const entradasFiltradas = rango ? entradas?.filter((t) => t.fecha >= rango.desde && t.fecha <= rango.hasta) : entradas;
 
   async function agregar(e) {
     e.preventDefault();
@@ -85,17 +87,7 @@ export default function EntradasTiempoTable({ proyectoId, onCambio }) {
   }
 
   return (
-    <div className="detalle-col">
-      <h4>Registro de tiempo</h4>
-
-      <TimerWidget
-        proyectoId={proyectoId}
-        onRegistrado={async () => {
-          await cargarEntradas();
-          onCambio();
-        }}
-      />
-
+    <div className="reporte-panel">
       <form className="subform" onSubmit={agregar}>
         <input type="date" required value={fecha} onChange={(e) => setFecha(e.target.value)} />
         <input
@@ -125,7 +117,7 @@ export default function EntradasTiempoTable({ proyectoId, onCambio }) {
         </button>
       </form>
 
-      <div className="tabla-wrap">
+      <div className="tabla-wrap tabla-wrap-grande">
         <table className="tabla-entradas">
           <thead>
             <tr>
@@ -151,7 +143,14 @@ export default function EntradasTiempoTable({ proyectoId, onCambio }) {
                 </td>
               </tr>
             )}
-            {entradas?.map((t) => (
+            {entradas !== null && entradas.length > 0 && entradasFiltradas.length === 0 && (
+              <tr>
+                <td colSpan="5" className="mini-empty">
+                  Sin resultados para el rango seleccionado.
+                </td>
+              </tr>
+            )}
+            {entradasFiltradas?.map((t) => (
               <tr key={t.id}>
                 <td>{fechaCorta(t.fecha)}</td>
                 <td>{t.horas} h</td>

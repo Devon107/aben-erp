@@ -1,15 +1,10 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { calcularAlertas } from '../lib/logic.js';
-import { calcularRangoPreset, fechaCorta, money } from '../lib/format.js';
+import { fechaCorta, money } from '../lib/format.js';
+import { useRangoFecha } from '../lib/useRangoFecha.js';
 import { useToast } from '../components/Toast.jsx';
-
-const PRESETS = [
-  { value: 'mes-actual', label: 'Este mes' },
-  { value: 'mes-pasado', label: 'Mes pasado' },
-  { value: 'anio-actual', label: 'Este año' },
-  { value: 'personalizado', label: 'Personalizado' },
-];
+import RangoSelector from '../components/RangoSelector.jsx';
 
 function alertaBadge(alerta) {
   if (alerta === 'perdida') {
@@ -34,17 +29,8 @@ function alertaBadge(alerta) {
 
 export default function DashboardView({ onIrACliente }) {
   const showToast = useToast();
-  const [preset, setPreset] = useState('mes-actual');
-  const [desdeInput, setDesdeInput] = useState('');
-  const [hastaInput, setHastaInput] = useState('');
+  const { preset, setPreset, desdeInput, setDesdeInput, hastaInput, setHastaInput, presets, rango } = useRangoFecha();
   const [clientesData, setClientesData] = useState([]);
-
-  const rango =
-    preset === 'personalizado'
-      ? desdeInput && hastaInput
-        ? { desde: desdeInput, hasta: hastaInput }
-        : null
-      : calcularRangoPreset(preset);
 
   useEffect(() => {
     if (!rango) return;
@@ -60,22 +46,15 @@ export default function DashboardView({ onIrACliente }) {
     <section>
       <div className="view-header">
         <h1>Dashboard</h1>
-        <div className="rango-selector">
-          <select value={preset} onChange={(e) => setPreset(e.target.value)}>
-            {PRESETS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-          {preset === 'personalizado' && (
-            <>
-              <input type="date" value={desdeInput} onChange={(e) => setDesdeInput(e.target.value)} />
-              <span>&ndash;</span>
-              <input type="date" value={hastaInput} onChange={(e) => setHastaInput(e.target.value)} />
-            </>
-          )}
-        </div>
+        <RangoSelector
+          presets={presets}
+          preset={preset}
+          setPreset={setPreset}
+          desdeInput={desdeInput}
+          setDesdeInput={setDesdeInput}
+          hastaInput={hastaInput}
+          setHastaInput={setHastaInput}
+        />
       </div>
 
       {rango && (
