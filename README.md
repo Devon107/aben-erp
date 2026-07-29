@@ -14,18 +14,20 @@ Aplicación web para llevar control de clientes freelance: registro de tiempo tr
 ## Stack
 
 - **Backend:** Node.js + Express
-- **Base de datos:** SQLite ([better-sqlite3](https://github.com/WiseLibs/better-sqlite3)), archivo en `data/tracker.db`
-- **Frontend:** HTML, CSS y JavaScript vanilla (sin frameworks), servido como archivos estáticos desde `public/`
+- **Base de datos:** SQLite ([better-sqlite3](https://github.com/WiseLibs/better-sqlite3)), archivo en `data/tracker.db` (montos guardados en centavos como `INTEGER`)
+- **Frontend:** React + Vite, código fuente en `client/`, compilado a `public/` (que Express sirve como estático)
 - **Gestor de paquetes:** [bun](https://bun.sh)
 
 ## Estructura del proyecto
 
 ```
-server.js          Servidor Express y endpoints de la API REST
-db/schema.sql       Definición de las tablas
-db/init.js          Inicializa la base de datos (crea tablas y migra si hace falta)
-data/tracker.db      Archivo SQLite (se genera al correr el proyecto, no se versiona)
-public/              Frontend estático (index.html, style.css, app.js)
+server.js            Servidor Express y endpoints de la API REST (exporta createApp(db) para tests)
+db/schema.sql         Definición de las tablas
+db/init.js            Inicializa la base de datos (crea tablas y migra si hace falta)
+data/tracker.db        Archivo SQLite (se genera al correr el proyecto, no se versiona)
+client/                Código fuente de React (Vite). client/src/lib, components, views, features/proyectos
+public/                 Build de producción (generado por `vite build`, no se versiona)
+test/                   Tests con el runner nativo de Node (node --test)
 ```
 
 ## Requisitos
@@ -41,6 +43,9 @@ public/              Frontend estático (index.html, style.css, app.js)
 # Instalar dependencias
 bun install
 
+# Compilar el frontend (genera public/)
+bun run build
+
 # Iniciar el servidor
 bun run start
 # equivalente a: node server.js
@@ -50,14 +55,23 @@ La base de datos SQLite se crea automáticamente en `data/tracker.db` la primera
 
 Luego abrí [http://localhost:3000](http://localhost:3000) en el navegador.
 
-Para desarrollo, con reinicio automático al guardar cambios:
+Para desarrollo, con recarga en caliente del frontend (Vite en `:5173`, con proxy de `/api` hacia Express en `:3000`) y reinicio automático del backend:
 
 ```bash
 bun run dev
-# equivalente a: node --watch server.js
+# corre en paralelo: node --watch server.js (dev:server) y vite (dev:client)
 ```
 
-El puerto por defecto es `3000`; se puede cambiar con la variable de entorno `PORT`.
+En desarrollo abrí [http://localhost:5173](http://localhost:5173) (no `:3000`, que en ese modo solo sirve la API). El puerto del backend por defecto es `3000`; se puede cambiar con la variable de entorno `PORT`.
+
+## Tests
+
+```bash
+bun run test
+# equivalente a: node --test
+```
+
+Corre tests de backend (contra una base SQLite temporal, nunca `data/tracker.db`) y de la lógica pura del frontend (`client/src/lib/logic.js`).
 
 ## API
 

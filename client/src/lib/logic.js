@@ -1,5 +1,5 @@
-// Funciones puras sin dependencias del DOM, compartidas entre el frontend
-// (cargado como <script> global) y los tests (requeridas como módulo CommonJS).
+// Funciones puras sin dependencias del DOM ni de React, compartidas entre los
+// componentes (importadas como módulo ES) y los tests (requeridas como CommonJS).
 
 function calcularAlertas(clientesData) {
   const conHoras = clientesData.filter((c) => c.total_horas > 0);
@@ -27,6 +27,4 @@ function calcularAlertas(clientesData) {
   });
 }
 
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { calcularAlertas };
-}
+export { calcularAlertas };

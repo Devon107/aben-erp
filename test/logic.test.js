@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { calcularAlertas } = require('../public/logic');
+
+// client/src es un módulo ES (client/package.json declara "type": "module"),
+// así que se importa dinámicamente en vez de con require().
+let calcularAlertas;
+test.before(async () => {
+  ({ calcularAlertas } = await import('../client/src/lib/logic.js'));
+});
 
 test('calcularAlertas: margen negativo siempre es alerta de perdida', () => {
   const [c] = calcularAlertas([{ cliente_id: 1, total_horas: 10, margen: -50 }]);
