@@ -10,6 +10,26 @@ function esNumeroNoNegativo(v) {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0;
 }
 
+// La API habla en dólares (como antes); la base de datos guarda centavos
+// (INTEGER) para evitar errores de redondeo de punto flotante en montos.
+function aCentavos(dolares) {
+  return Math.round(dolares * 100);
+}
+
+function aDolares(centavos) {
+  return centavos == null ? null : centavos / 100;
+}
+
+function serializarProyecto(row) {
+  if (!row) return row;
+  return { ...row, tarifa_hora: aDolares(row.tarifa_hora), precio_fijo: aDolares(row.precio_fijo) };
+}
+
+function serializarGasto(row) {
+  if (!row) return row;
+  return { ...row, monto: aDolares(row.monto) };
+}
+
 function createApp(db) {
   const app = express();
 
@@ -81,13 +101,13 @@ app.get('/api/proyectos', (req, res) => {
   } else {
     proyectos = db.prepare('SELECT * FROM proyectos ORDER BY id DESC').all();
   }
-  res.json(proyectos);
+  res.json(proyectos.map(serializarProyecto));
 });
 
 app.get('/api/proyectos/:id', (req, res) => {
   const proyecto = db.prepare('SELECT * FROM proyectos WHERE id = ?').get(req.params.id);
   if (!proyecto) return notFound(res, 'Proyecto');
-  res.json(proyecto);
+  res.json(serializarProyecto(proyecto));
 });
 
 app.post('/api/proyectos', (req, res) => {
@@ -117,20 +137,28 @@ app.post('/api/proyectos', (req, res) => {
       `INSERT INTO proyectos (cliente_id, nombre, tipo_cobro, tarifa_hora, precio_fijo, estado)
        VALUES (?, ?, ?, ?, ?, ?)`
     )
-    .run(cliente_id, nombre, tipo_cobro, tarifa_hora ?? null, precio_fijo ?? null, estadoFinal);
+    .run(
+      cliente_id,
+      nombre,
+      tipo_cobro,
+      tarifa_hora != null ? aCentavos(tarifa_hora) : null,
+      precio_fijo != null ? aCentavos(precio_fijo) : null,
+      estadoFinal
+    );
   const proyecto = db.prepare('SELECT * FROM proyectos WHERE id = ?').get(info.lastInsertRowid);
-  res.status(201).json(proyecto);
+  res.status(201).json(serializarProyecto(proyecto));
 });
 
 app.put('/api/proyectos/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM proyectos WHERE id = ?').get(req.params.id);
   if (!existing) return notFound(res, 'Proyecto');
+  const existingDolares = serializarProyecto(existing);
 
   const cliente_id = req.body.cliente_id ?? existing.cliente_id;
   const nombre = req.body.nombre ?? existing.nombre;
   const tipo_cobro = req.body.tipo_cobro ?? existing.tipo_cobro;
-  const tarifa_hora = req.body.tarifa_hora !== undefined ? req.body.tarifa_hora : existing.tarifa_hora;
-  const precio_fijo = req.body.precio_fijo !== undefined ? req.body.precio_fijo : existing.precio_fijo;
+  const tarifa_hora = req.body.tarifa_hora !== undefined ? req.body.tarifa_hora : existingDolares.tarifa_hora;
+  const precio_fijo = req.body.precio_fijo !== undefined ? req.body.precio_fijo : existingDolares.precio_fijo;
   const estado = req.body.estado ?? existing.estado;
 
   if (!['hora', 'fijo'].includes(tipo_cobro)) {
@@ -150,9 +178,17 @@ app.put('/api/proyectos/:id', (req, res) => {
     `UPDATE proyectos
      SET cliente_id = ?, nombre = ?, tipo_cobro = ?, tarifa_hora = ?, precio_fijo = ?, estado = ?
      WHERE id = ?`
-  ).run(cliente_id, nombre, tipo_cobro, tarifa_hora, precio_fijo, estado, req.params.id);
+  ).run(
+    cliente_id,
+    nombre,
+    tipo_cobro,
+    tarifa_hora != null ? aCentavos(tarifa_hora) : null,
+    precio_fijo != null ? aCentavos(precio_fijo) : null,
+    estado,
+    req.params.id
+  );
   const proyecto = db.prepare('SELECT * FROM proyectos WHERE id = ?').get(req.params.id);
-  res.json(proyecto);
+  res.json(serializarProyecto(proyecto));
 });
 
 app.delete('/api/proyectos/:id', (req, res) => {
@@ -175,7 +211,9 @@ app.get('/api/proyectos/:id/rentabilidad', (req, res) => {
     )
     .get(req.params.id).total_horas;
 
-  const gastos = db
+  // Cálculo interno en centavos (enteros) para no arrastrar errores de
+  // redondeo; solo se convierte a dólares al armar la respuesta.
+  const gastosCentavos = db
     .prepare(
       `SELECT COALESCE(SUM(monto), 0) AS total_gastos
        FROM gastos
@@ -183,21 +221,21 @@ app.get('/api/proyectos/:id/rentabilidad', (req, res) => {
     )
     .get(req.params.id).total_gastos;
 
-  const ingreso =
+  const ingresoCentavos =
     proyecto.tipo_cobro === 'hora'
-      ? horas * (proyecto.tarifa_hora || 0)
+      ? Math.round(horas * (proyecto.tarifa_hora || 0))
       : proyecto.precio_fijo || 0;
 
-  const margen = ingreso - gastos;
+  const margenCentavos = ingresoCentavos - gastosCentavos;
 
   res.json({
     proyecto_id: proyecto.id,
     nombre: proyecto.nombre,
     tipo_cobro: proyecto.tipo_cobro,
     total_horas: horas,
-    ingreso_total: ingreso,
-    total_gastos: gastos,
-    margen,
+    ingreso_total: aDolares(ingresoCentavos),
+    total_gastos: aDolares(gastosCentavos),
+    margen: aDolares(margenCentavos),
   });
 });
 
@@ -292,13 +330,13 @@ app.get('/api/gastos', (req, res) => {
   } else {
     gastos = db.prepare('SELECT * FROM gastos ORDER BY fecha DESC, id DESC').all();
   }
-  res.json(gastos);
+  res.json(gastos.map(serializarGasto));
 });
 
 app.get('/api/gastos/:id', (req, res) => {
   const gasto = db.prepare('SELECT * FROM gastos WHERE id = ?').get(req.params.id);
   if (!gasto) return notFound(res, 'Gasto');
-  res.json(gasto);
+  res.json(serializarGasto(gasto));
 });
 
 app.post('/api/gastos', (req, res) => {
@@ -316,9 +354,9 @@ app.post('/api/gastos', (req, res) => {
 
   const info = db
     .prepare('INSERT INTO gastos (proyecto_id, descripcion, monto, fecha) VALUES (?, ?, ?, ?)')
-    .run(proyecto_id, descripcion, monto, fechaFinal);
+    .run(proyecto_id, descripcion, aCentavos(monto), fechaFinal);
   const gasto = db.prepare('SELECT * FROM gastos WHERE id = ?').get(info.lastInsertRowid);
-  res.status(201).json(gasto);
+  res.status(201).json(serializarGasto(gasto));
 });
 
 app.put('/api/gastos/:id', (req, res) => {
@@ -327,7 +365,7 @@ app.put('/api/gastos/:id', (req, res) => {
 
   const proyecto_id = req.body.proyecto_id ?? existing.proyecto_id;
   const descripcion = req.body.descripcion ?? existing.descripcion;
-  const monto = req.body.monto !== undefined ? req.body.monto : existing.monto;
+  const monto = req.body.monto !== undefined ? req.body.monto : aDolares(existing.monto);
   const fecha = req.body.fecha ?? existing.fecha;
 
   if (!esNumeroNoNegativo(monto)) {
@@ -337,12 +375,12 @@ app.put('/api/gastos/:id', (req, res) => {
   db.prepare('UPDATE gastos SET proyecto_id = ?, descripcion = ?, monto = ?, fecha = ? WHERE id = ?').run(
     proyecto_id,
     descripcion,
-    monto,
+    aCentavos(monto),
     fecha,
     req.params.id
   );
   const gasto = db.prepare('SELECT * FROM gastos WHERE id = ?').get(req.params.id);
-  res.json(gasto);
+  res.json(serializarGasto(gasto));
 });
 
 app.delete('/api/gastos/:id', (req, res) => {
@@ -403,14 +441,20 @@ app.get('/api/dashboard', (req, res) => {
     )
     .all(desde, hasta, desde, hasta);
 
-  const clientesResultado = rows.map((r) => ({
-    cliente_id: r.cliente_id,
-    cliente_nombre: r.cliente_nombre,
-    total_horas: r.total_horas,
-    ingreso_total: r.ingreso_total,
-    total_gastos: r.total_gastos,
-    margen: r.ingreso_total - r.total_gastos,
-  }));
+  // ingreso_total sale de SQL en centavos pero puede ser fraccionario (horas
+  // decimales * tarifa en centavos); se redondea antes de pasar a dólares.
+  const clientesResultado = rows.map((r) => {
+    const ingresoCentavos = Math.round(r.ingreso_total);
+    const gastosCentavos = Math.round(r.total_gastos);
+    return {
+      cliente_id: r.cliente_id,
+      cliente_nombre: r.cliente_nombre,
+      total_horas: r.total_horas,
+      ingreso_total: aDolares(ingresoCentavos),
+      total_gastos: aDolares(gastosCentavos),
+      margen: aDolares(ingresoCentavos - gastosCentavos),
+    };
+  });
 
   res.json({ desde, hasta, clientes: clientesResultado });
 });

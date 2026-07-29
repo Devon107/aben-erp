@@ -6,22 +6,27 @@ CREATE TABLE IF NOT EXISTS clientes (
   modo_facturacion TEXT NOT NULL CHECK (modo_facturacion IN ('hora', 'proyecto', 'mixto'))
 );
 
+-- tarifa_hora y precio_fijo se guardan en centavos (INTEGER) para evitar
+-- errores de redondeo de punto flotante en montos de dinero. La API convierte
+-- a/desde dolares en el limite HTTP; ver db/init.js (migrarMontosACentavos)
+-- para bases de datos creadas antes de este cambio.
 CREATE TABLE IF NOT EXISTS proyectos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   cliente_id INTEGER NOT NULL,
   nombre TEXT NOT NULL,
   tipo_cobro TEXT NOT NULL CHECK (tipo_cobro IN ('hora', 'fijo')),
-  tarifa_hora REAL,
-  precio_fijo REAL,
+  tarifa_hora INTEGER,
+  precio_fijo INTEGER,
   estado TEXT NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo', 'completado', 'pausado')),
   FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
 );
 
+-- monto tambien en centavos (INTEGER), mismo motivo que arriba.
 CREATE TABLE IF NOT EXISTS gastos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   proyecto_id INTEGER NOT NULL,
   descripcion TEXT NOT NULL,
-  monto REAL NOT NULL,
+  monto INTEGER NOT NULL,
   fecha TEXT NOT NULL DEFAULT (date('now')),
   FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE
 );

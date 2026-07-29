@@ -37,9 +37,10 @@ test('GET /api/dashboard calcula horas, ingreso, gastos y margen por cliente den
   const clienteId = db
     .prepare("INSERT INTO clientes (nombre, modo_facturacion) VALUES ('Cliente Test', 'hora')")
     .run().lastInsertRowid;
+  // tarifa_hora y monto se guardan en centavos: 5000 = $50.00/hora.
   const proyectoId = db
     .prepare(
-      "INSERT INTO proyectos (cliente_id, nombre, tipo_cobro, tarifa_hora, estado) VALUES (?, 'Proyecto Test', 'hora', 50, 'activo')"
+      "INSERT INTO proyectos (cliente_id, nombre, tipo_cobro, tarifa_hora, estado) VALUES (?, 'Proyecto Test', 'hora', 5000, 'activo')"
     )
     .run(clienteId).lastInsertRowid;
 
@@ -57,7 +58,7 @@ test('GET /api/dashboard calcula horas, ingreso, gastos y margen por cliente den
   db.prepare('INSERT INTO gastos (proyecto_id, descripcion, monto, fecha) VALUES (?, ?, ?, ?)').run(
     proyectoId,
     'Gasto test',
-    100,
+    10000, // $100.00 en centavos
     '2026-07-15'
   );
 
