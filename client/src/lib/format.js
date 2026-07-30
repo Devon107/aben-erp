@@ -4,6 +4,14 @@ export function money(n) {
   return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'USD' }).format(n || 0);
 }
 
+// Solo para mostrar: redondea a 2 decimales el texto de horas (las sumas en
+// SQL pueden arrastrar cola de punto flotante, ej. 49.370000000000005). El
+// valor numérico original no se toca — se sigue usando intacto en cálculos
+// como margen_por_hora en calcularAlertas().
+export function horasTexto(n) {
+  return (n ?? 0).toFixed(2);
+}
+
 export function fechaCorta(iso) {
   if (!iso) return '';
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);

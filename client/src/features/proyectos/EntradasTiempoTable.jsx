@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api.js';
-import { fechaCorta, horasYMinutosADecimal } from '../../lib/format.js';
+import { fechaCorta, horasTexto, horasYMinutosADecimal } from '../../lib/format.js';
 import { useToast } from '../../components/Toast.jsx';
 import { useConfirm } from '../../components/ConfirmModal.jsx';
 import EntradaTiempoModal from './EntradaTiempoModal.jsx';
@@ -153,7 +153,7 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
             {entradasFiltradas?.map((t) => (
               <tr key={t.id}>
                 <td>{fechaCorta(t.fecha)}</td>
-                <td>{t.horas} h</td>
+                <td>{horasTexto(t.horas)} h</td>
                 <td className="col-descripcion">{t.descripcion || '—'}</td>
                 <td>
                   <span className={`badge-origen badge-origen-${t.origen}`}>{t.origen}</span>

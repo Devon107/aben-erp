@@ -1,4 +1,4 @@
-import { money } from '../../lib/format.js';
+import { horasTexto, money } from '../../lib/format.js';
 
 export default function RentabilidadResumen({ rentabilidad }) {
   const margenClase = rentabilidad && rentabilidad.margen >= 0 ? 'positivo' : 'negativo';
@@ -7,7 +7,7 @@ export default function RentabilidadResumen({ rentabilidad }) {
     <div className="rent-mini">
       <div className="rent-mini-item">
         <span className="label">Horas</span>
-        <span className="value">{rentabilidad ? `${rentabilidad.total_horas} h` : <>&hellip;</>}</span>
+        <span className="value">{rentabilidad ? `${horasTexto(rentabilidad.total_horas)} h` : <>&hellip;</>}</span>
       </div>
       <div className="rent-mini-item">
         <span className="label">Ingreso</span>

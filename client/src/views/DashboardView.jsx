@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { calcularAlertas } from '../lib/logic.js';
-import { fechaCorta, money } from '../lib/format.js';
+import { fechaCorta, horasTexto, money } from '../lib/format.js';
 import { useRangoFecha } from '../lib/useRangoFecha.js';
 import { useToast } from '../components/Toast.jsx';
 import RangoSelector from '../components/RangoSelector.jsx';
@@ -86,7 +86,7 @@ export default function DashboardView({ onIrACliente }) {
                       {c.cliente_nombre}
                     </button>
                   </td>
-                  <td>{c.total_horas} h</td>
+                  <td>{horasTexto(c.total_horas)} h</td>
                   <td>{money(c.ingreso_total)}</td>
                   <td className={margenClase}>{money(c.margen)}</td>
                   <td>{alertaBadge(c.alerta)}</td>
