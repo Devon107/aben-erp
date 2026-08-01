@@ -7,5 +7,3 @@ AUDIT.md
 
 # Build de producción de Vite (se genera con `bun run build`)
 public/
-dockerfile
-.dockerignore

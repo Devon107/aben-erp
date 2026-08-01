@@ -1,0 +1,7 @@
+node_modules
+data
+public
+.git
+*.log
+AUDIT.md
+README.md
