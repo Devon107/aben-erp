@@ -22,12 +22,18 @@ function aDolares(centavos) {
 
 function serializarProyecto(row) {
   if (!row) return row;
-  return { ...row, tarifa_hora: aDolares(row.tarifa_hora), precio_fijo: aDolares(row.precio_fijo) };
+  return { ...row, tarifa_hora: aDolares(row.tarifa_hora), precio_fijo: aDolares(row.precio_fijo), pagado: !!row.pagado };
 }
 
 function serializarGasto(row) {
   if (!row) return row;
   return { ...row, monto: aDolares(row.monto) };
+}
+
+// SQLite guarda pagado como 0/1; la API habla en booleano.
+function serializarEntrada(row) {
+  if (!row) return row;
+  return { ...row, pagado: !!row.pagado };
 }
 
 function createApp(db) {
@@ -111,7 +117,7 @@ app.get('/api/proyectos/:id', (req, res) => {
 });
 
 app.post('/api/proyectos', (req, res) => {
-  const { cliente_id, nombre, tipo_cobro, tarifa_hora, precio_fijo, estado } = req.body;
+  const { cliente_id, nombre, tipo_cobro, tarifa_hora, precio_fijo, estado, pagado } = req.body;
   if (!cliente_id || !nombre || !tipo_cobro) {
     return res.status(400).json({ error: 'cliente_id, nombre y tipo_cobro son requeridos' });
   }
@@ -131,11 +137,15 @@ app.post('/api/proyectos', (req, res) => {
   if (!['activo', 'completado', 'pausado'].includes(estadoFinal)) {
     return res.status(400).json({ error: 'estado invalido' });
   }
+  const pagadoFinal = pagado ?? false;
+  if (typeof pagadoFinal !== 'boolean') {
+    return res.status(400).json({ error: 'pagado debe ser true o false' });
+  }
 
   const info = db
     .prepare(
-      `INSERT INTO proyectos (cliente_id, nombre, tipo_cobro, tarifa_hora, precio_fijo, estado)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO proyectos (cliente_id, nombre, tipo_cobro, tarifa_hora, precio_fijo, estado, pagado)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       cliente_id,
@@ -143,7 +153,8 @@ app.post('/api/proyectos', (req, res) => {
       tipo_cobro,
       tarifa_hora != null ? aCentavos(tarifa_hora) : null,
       precio_fijo != null ? aCentavos(precio_fijo) : null,
-      estadoFinal
+      estadoFinal,
+      pagadoFinal ? 1 : 0
     );
   const proyecto = db.prepare('SELECT * FROM proyectos WHERE id = ?').get(info.lastInsertRowid);
   res.status(201).json(serializarProyecto(proyecto));
@@ -160,6 +171,7 @@ app.put('/api/proyectos/:id', (req, res) => {
   const tarifa_hora = req.body.tarifa_hora !== undefined ? req.body.tarifa_hora : existingDolares.tarifa_hora;
   const precio_fijo = req.body.precio_fijo !== undefined ? req.body.precio_fijo : existingDolares.precio_fijo;
   const estado = req.body.estado ?? existing.estado;
+  const pagado = req.body.pagado !== undefined ? req.body.pagado : !!existing.pagado;
 
   if (!['hora', 'fijo'].includes(tipo_cobro)) {
     return res.status(400).json({ error: 'tipo_cobro invalido' });
@@ -173,10 +185,13 @@ app.put('/api/proyectos/:id', (req, res) => {
   if (precio_fijo != null && !esNumeroNoNegativo(precio_fijo)) {
     return res.status(400).json({ error: 'precio_fijo debe ser un numero no negativo' });
   }
+  if (typeof pagado !== 'boolean') {
+    return res.status(400).json({ error: 'pagado debe ser true o false' });
+  }
 
   db.prepare(
     `UPDATE proyectos
-     SET cliente_id = ?, nombre = ?, tipo_cobro = ?, tarifa_hora = ?, precio_fijo = ?, estado = ?
+     SET cliente_id = ?, nombre = ?, tipo_cobro = ?, tarifa_hora = ?, precio_fijo = ?, estado = ?, pagado = ?
      WHERE id = ?`
   ).run(
     cliente_id,
@@ -185,6 +200,7 @@ app.put('/api/proyectos/:id', (req, res) => {
     tarifa_hora != null ? aCentavos(tarifa_hora) : null,
     precio_fijo != null ? aCentavos(precio_fijo) : null,
     estado,
+    pagado ? 1 : 0,
     req.params.id
   );
   const proyecto = db.prepare('SELECT * FROM proyectos WHERE id = ?').get(req.params.id);
@@ -211,6 +227,14 @@ app.get('/api/proyectos/:id/rentabilidad', (req, res) => {
     )
     .get(req.params.id).total_horas;
 
+  const horasPagadas = db
+    .prepare(
+      `SELECT COALESCE(SUM(horas), 0) AS horas_pagadas
+       FROM entradas_tiempo
+       WHERE proyecto_id = ? AND pagado = 1`
+    )
+    .get(req.params.id).horas_pagadas;
+
   // Cálculo interno en centavos (enteros) para no arrastrar errores de
   // redondeo; solo se convierte a dólares al armar la respuesta.
   const gastosCentavos = db
@@ -221,10 +245,22 @@ app.get('/api/proyectos/:id/rentabilidad', (req, res) => {
     )
     .get(req.params.id).total_gastos;
 
+  // ingresoCentavos refleja solo lo cobrado: en proyectos por hora, las horas
+  // marcadas pagado=1; en precio fijo, el monto completo solo si el proyecto
+  // esta marcado como pagado. ingresoPendienteCentavos es el complemento: lo
+  // que falta cobrar por el trabajo ya realizado.
   const ingresoCentavos =
     proyecto.tipo_cobro === 'hora'
-      ? Math.round(horas * (proyecto.tarifa_hora || 0))
-      : proyecto.precio_fijo || 0;
+      ? Math.round(horasPagadas * (proyecto.tarifa_hora || 0))
+      : proyecto.pagado
+        ? proyecto.precio_fijo || 0
+        : 0;
+  const ingresoPendienteCentavos =
+    proyecto.tipo_cobro === 'hora'
+      ? Math.round((horas - horasPagadas) * (proyecto.tarifa_hora || 0))
+      : proyecto.pagado
+        ? 0
+        : proyecto.precio_fijo || 0;
 
   const margenCentavos = ingresoCentavos - gastosCentavos;
 
@@ -234,6 +270,7 @@ app.get('/api/proyectos/:id/rentabilidad', (req, res) => {
     tipo_cobro: proyecto.tipo_cobro,
     total_horas: horas,
     ingreso_total: aDolares(ingresoCentavos),
+    ingreso_pendiente: aDolares(ingresoPendienteCentavos),
     total_gastos: aDolares(gastosCentavos),
     margen: aDolares(margenCentavos),
   });
@@ -251,17 +288,17 @@ app.get('/api/entradas-tiempo', (req, res) => {
   } else {
     entradas = db.prepare('SELECT * FROM entradas_tiempo ORDER BY fecha DESC, id DESC').all();
   }
-  res.json(entradas);
+  res.json(entradas.map(serializarEntrada));
 });
 
 app.get('/api/entradas-tiempo/:id', (req, res) => {
   const entrada = db.prepare('SELECT * FROM entradas_tiempo WHERE id = ?').get(req.params.id);
   if (!entrada) return notFound(res, 'Entrada de tiempo');
-  res.json(entrada);
+  res.json(serializarEntrada(entrada));
 });
 
 app.post('/api/entradas-tiempo', (req, res) => {
-  const { proyecto_id, fecha, horas, descripcion, origen } = req.body;
+  const { proyecto_id, fecha, horas, descripcion, origen, pagado } = req.body;
   if (!proyecto_id || !fecha || horas === undefined) {
     return res.status(400).json({ error: 'proyecto_id, fecha y horas son requeridos' });
   }
@@ -275,15 +312,19 @@ app.post('/api/entradas-tiempo', (req, res) => {
   if (!['timer', 'manual'].includes(origenFinal)) {
     return res.status(400).json({ error: 'origen invalido' });
   }
+  const pagadoFinal = pagado ?? false;
+  if (typeof pagadoFinal !== 'boolean') {
+    return res.status(400).json({ error: 'pagado debe ser true o false' });
+  }
 
   const info = db
     .prepare(
-      `INSERT INTO entradas_tiempo (proyecto_id, fecha, horas, descripcion, origen)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO entradas_tiempo (proyecto_id, fecha, horas, descripcion, origen, pagado)
+       VALUES (?, ?, ?, ?, ?, ?)`
     )
-    .run(proyecto_id, fecha, horas, descripcion ?? null, origenFinal);
+    .run(proyecto_id, fecha, horas, descripcion ?? null, origenFinal, pagadoFinal ? 1 : 0);
   const entrada = db.prepare('SELECT * FROM entradas_tiempo WHERE id = ?').get(info.lastInsertRowid);
-  res.status(201).json(entrada);
+  res.status(201).json(serializarEntrada(entrada));
 });
 
 app.put('/api/entradas-tiempo/:id', (req, res) => {
@@ -295,6 +336,7 @@ app.put('/api/entradas-tiempo/:id', (req, res) => {
   const horas = req.body.horas !== undefined ? req.body.horas : existing.horas;
   const descripcion = req.body.descripcion !== undefined ? req.body.descripcion : existing.descripcion;
   const origen = req.body.origen ?? existing.origen;
+  const pagado = req.body.pagado !== undefined ? req.body.pagado : !!existing.pagado;
 
   if (!['timer', 'manual'].includes(origen)) {
     return res.status(400).json({ error: 'origen invalido' });
@@ -302,14 +344,17 @@ app.put('/api/entradas-tiempo/:id', (req, res) => {
   if (typeof horas !== 'number' || !Number.isFinite(horas) || horas <= 0) {
     return res.status(400).json({ error: 'horas debe ser un numero mayor a 0' });
   }
+  if (typeof pagado !== 'boolean') {
+    return res.status(400).json({ error: 'pagado debe ser true o false' });
+  }
 
   db.prepare(
     `UPDATE entradas_tiempo
-     SET proyecto_id = ?, fecha = ?, horas = ?, descripcion = ?, origen = ?
+     SET proyecto_id = ?, fecha = ?, horas = ?, descripcion = ?, origen = ?, pagado = ?
      WHERE id = ?`
-  ).run(proyecto_id, fecha, horas, descripcion, origen, req.params.id);
+  ).run(proyecto_id, fecha, horas, descripcion, origen, pagado ? 1 : 0, req.params.id);
   const entrada = db.prepare('SELECT * FROM entradas_tiempo WHERE id = ?').get(req.params.id);
-  res.json(entrada);
+  res.json(serializarEntrada(entrada));
 });
 
 app.delete('/api/entradas-tiempo/:id', (req, res) => {
@@ -403,15 +448,23 @@ app.get('/api/dashboard', (req, res) => {
   }
 
   // Horas e ingreso quedan naturalmente acotados al rango porque provienen de
-  // entradas_tiempo.fecha. Para proyectos de precio fijo (que no se prorratean
-  // por hora) se atribuye el precio_fijo completo al rango si hubo al menos
-  // una entrada de tiempo dentro de él; si no, no se cuenta en ese período.
+  // entradas_tiempo.fecha. ingreso_total refleja solo lo COBRADO, no el valor
+  // total del trabajo: en proyectos por hora, solo las horas marcadas pagado=1;
+  // en proyectos de precio fijo (que no se prorratean por hora), el precio_fijo
+  // completo se atribuye al rango si hubo actividad en él y el proyecto está
+  // marcado como pagado (proyectos.pagado).
   const rows = db
     .prepare(
       `WITH horas_proyecto AS (
          SELECT proyecto_id, SUM(horas) AS horas
          FROM entradas_tiempo
          WHERE fecha BETWEEN ? AND ?
+         GROUP BY proyecto_id
+       ),
+       horas_pagadas_proyecto AS (
+         SELECT proyecto_id, SUM(horas) AS horas
+         FROM entradas_tiempo
+         WHERE fecha BETWEEN ? AND ? AND pagado = 1
          GROUP BY proyecto_id
        ),
        gastos_proyecto AS (
@@ -424,33 +477,47 @@ app.get('/api/dashboard', (req, res) => {
          c.id AS cliente_id,
          c.nombre AS cliente_nombre,
          COALESCE(SUM(hp.horas), 0) AS total_horas,
+         COALESCE(SUM(hpp.horas), 0) AS horas_pagadas,
          COALESCE(SUM(
            CASE
-             WHEN p.tipo_cobro = 'hora' THEN COALESCE(hp.horas, 0) * COALESCE(p.tarifa_hora, 0)
-             WHEN p.tipo_cobro = 'fijo' AND hp.horas IS NOT NULL THEN COALESCE(p.precio_fijo, 0)
+             WHEN p.tipo_cobro = 'hora' THEN COALESCE(hpp.horas, 0) * COALESCE(p.tarifa_hora, 0)
+             WHEN p.tipo_cobro = 'fijo' AND hp.horas IS NOT NULL AND p.pagado = 1 THEN COALESCE(p.precio_fijo, 0)
              ELSE 0
            END
          ), 0) AS ingreso_total,
+         COALESCE(SUM(
+           CASE
+             WHEN p.tipo_cobro = 'hora' THEN (COALESCE(hp.horas, 0) - COALESCE(hpp.horas, 0)) * COALESCE(p.tarifa_hora, 0)
+             WHEN p.tipo_cobro = 'fijo' AND hp.horas IS NOT NULL AND p.pagado = 0 THEN COALESCE(p.precio_fijo, 0)
+             ELSE 0
+           END
+         ), 0) AS ingreso_pendiente,
          COALESCE(SUM(gp.gastos), 0) AS total_gastos
        FROM clientes c
        LEFT JOIN proyectos p ON p.cliente_id = c.id
        LEFT JOIN horas_proyecto hp ON hp.proyecto_id = p.id
+       LEFT JOIN horas_pagadas_proyecto hpp ON hpp.proyecto_id = p.id
        LEFT JOIN gastos_proyecto gp ON gp.proyecto_id = p.id
        GROUP BY c.id, c.nombre
        ORDER BY c.nombre COLLATE NOCASE`
     )
-    .all(desde, hasta, desde, hasta);
+    .all(desde, hasta, desde, hasta, desde, hasta);
 
-  // ingreso_total sale de SQL en centavos pero puede ser fraccionario (horas
-  // decimales * tarifa en centavos); se redondea antes de pasar a dólares.
+  // ingreso_total/ingreso_pendiente salen de SQL en centavos pero pueden ser
+  // fraccionarios (horas decimales * tarifa en centavos); se redondean antes
+  // de pasar a dólares.
   const clientesResultado = rows.map((r) => {
     const ingresoCentavos = Math.round(r.ingreso_total);
+    const pendienteCentavos = Math.round(r.ingreso_pendiente);
     const gastosCentavos = Math.round(r.total_gastos);
     return {
       cliente_id: r.cliente_id,
       cliente_nombre: r.cliente_nombre,
       total_horas: r.total_horas,
+      horas_pagadas: r.horas_pagadas,
+      horas_pendientes: r.total_horas - r.horas_pagadas,
       ingreso_total: aDolares(ingresoCentavos),
+      ingreso_pendiente: aDolares(pendienteCentavos),
       total_gastos: aDolares(gastosCentavos),
       margen: aDolares(ingresoCentavos - gastosCentavos),
     };

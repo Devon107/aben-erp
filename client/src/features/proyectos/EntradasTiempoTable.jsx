@@ -16,6 +16,8 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
   const [descripcion, setDescripcion] = useState('');
   const [entradaEditando, setEntradaEditando] = useState(null);
   const [modalAbierto, setModalAbierto] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  const [estadoPago, setEstadoPago] = useState('todos'); // 'todos' | 'pagado' | 'pendiente'
 
   async function cargarEntradas() {
     try {
@@ -31,7 +33,11 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [proyectoId, refrescarSenal]);
 
-  const entradasFiltradas = rango ? entradas?.filter((t) => t.fecha >= rango.desde && t.fecha <= rango.hasta) : entradas;
+  const busquedaNormalizada = busqueda.trim().toLowerCase();
+  const entradasFiltradas = entradas
+    ?.filter((t) => !rango || (t.fecha >= rango.desde && t.fecha <= rango.hasta))
+    .filter((t) => estadoPago === 'todos' || (estadoPago === 'pagado' ? t.pagado : !t.pagado))
+    .filter((t) => !busquedaNormalizada || (t.descripcion || '').toLowerCase().includes(busquedaNormalizada));
 
   async function agregar(e) {
     e.preventDefault();
@@ -67,6 +73,20 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
       await api(`/api/entradas-tiempo/${entradaEditando.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       showToast('Entrada actualizada');
       setModalAbierto(false);
+      await cargarEntradas();
+      onCambio();
+    } catch (err) {
+      showToast(err.message, true);
+    }
+  }
+
+  async function alternarPagado(entrada) {
+    try {
+      await api(`/api/entradas-tiempo/${entrada.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ pagado: !entrada.pagado }),
+      });
+      showToast(entrada.pagado ? 'Marcada como pendiente' : 'Marcada como pagada');
       await cargarEntradas();
       onCambio();
     } catch (err) {
@@ -117,12 +137,27 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
         </button>
       </form>
 
+      <div className="filtros-tabla">
+        <input
+          type="search"
+          placeholder="Buscar por descripción..."
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+        />
+        <select value={estadoPago} onChange={(e) => setEstadoPago(e.target.value)}>
+          <option value="todos">Todos</option>
+          <option value="pagado">Pagadas</option>
+          <option value="pendiente">Pendientes</option>
+        </select>
+      </div>
+
       <div className="tabla-wrap tabla-wrap-grande">
         <table className="tabla-entradas">
           <thead>
             <tr>
               <th>Fecha</th>
               <th>Horas</th>
+              <th>Pago</th>
               <th>Descripción</th>
               <th>Origen</th>
               <th></th>
@@ -131,22 +166,22 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
           <tbody>
             {entradas === null && (
               <tr>
-                <td colSpan="5" className="mini-empty">
+                <td colSpan="6" className="mini-empty">
                   Cargando...
                 </td>
               </tr>
             )}
             {entradas !== null && entradas.length === 0 && (
               <tr>
-                <td colSpan="5" className="mini-empty">
+                <td colSpan="6" className="mini-empty">
                   Sin horas registradas.
                 </td>
               </tr>
             )}
             {entradas !== null && entradas.length > 0 && entradasFiltradas.length === 0 && (
               <tr>
-                <td colSpan="5" className="mini-empty">
-                  Sin resultados para el rango seleccionado.
+                <td colSpan="6" className="mini-empty">
+                  Sin resultados para los filtros seleccionados.
                 </td>
               </tr>
             )}
@@ -154,6 +189,16 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
               <tr key={t.id}>
                 <td>{fechaCorta(t.fecha)}</td>
                 <td>{horasTexto(t.horas)} h</td>
+                <td>
+                  <button
+                    type="button"
+                    className={`badge-pago ${t.pagado ? 'badge-pago-pagado' : 'badge-pago-pendiente'}`}
+                    title="Cambiar estado de pago"
+                    onClick={() => alternarPagado(t)}
+                  >
+                    {t.pagado ? 'Pagado' : 'Pendiente'}
+                  </button>
+                </td>
                 <td className="col-descripcion">{t.descripcion || '—'}</td>
                 <td>
                   <span className={`badge-origen badge-origen-${t.origen}`}>{t.origen}</span>

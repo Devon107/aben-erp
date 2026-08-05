@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS clientes (
 -- errores de redondeo de punto flotante en montos de dinero. La API convierte
 -- a/desde dolares en el limite HTTP; ver db/init.js (migrarMontosACentavos)
 -- para bases de datos creadas antes de este cambio.
+-- pagado solo tiene sentido para tipo_cobro = 'fijo': marca si el precio fijo
+-- ya se cobro. Para tipo_cobro = 'hora' el estado de pago se trackea por
+-- entrada de tiempo (entradas_tiempo.pagado), no a nivel proyecto.
 CREATE TABLE IF NOT EXISTS proyectos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   cliente_id INTEGER NOT NULL,
@@ -18,6 +21,7 @@ CREATE TABLE IF NOT EXISTS proyectos (
   tarifa_hora INTEGER,
   precio_fijo INTEGER,
   estado TEXT NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo', 'completado', 'pausado')),
+  pagado INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
 );
 
@@ -31,6 +35,8 @@ CREATE TABLE IF NOT EXISTS gastos (
   FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE
 );
 
+-- pagado: 0 = pendiente de cobro, 1 = pagado. Default 0 porque las entradas
+-- existentes antes de este campo no tenian este seguimiento.
 CREATE TABLE IF NOT EXISTS entradas_tiempo (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   proyecto_id INTEGER NOT NULL,
@@ -38,6 +44,7 @@ CREATE TABLE IF NOT EXISTS entradas_tiempo (
   horas REAL NOT NULL,
   descripcion TEXT,
   origen TEXT NOT NULL DEFAULT 'manual' CHECK (origen IN ('timer', 'manual')),
+  pagado INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE
 );
 

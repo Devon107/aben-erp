@@ -437,6 +437,21 @@ main {
   min-width: 0;
 }
 
+.filtros-tabla {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.filtros-tabla input[type="search"] {
+  flex: 1 1 200px;
+}
+
+.filtros-tabla select {
+  flex: 0 1 140px;
+}
+
 /* ---------- Timer ---------- */
 
 .timer-widget {
@@ -587,6 +602,27 @@ main {
   color: var(--gray);
 }
 
+.badge-pago {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.badge-pago-pagado {
+  background: var(--green-dim);
+  color: var(--green);
+}
+
+.badge-pago-pendiente {
+  background: var(--gray-dim);
+  color: var(--gray);
+}
+
 .mini-list {
   list-style: none;
   margin: 0;
@@ -670,6 +706,16 @@ select:focus {
 
 input::placeholder {
   color: var(--text-faint);
+}
+
+.label-checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.label-checkbox input[type="checkbox"] {
+  width: auto;
 }
 
 /* ---------- Modal ---------- */

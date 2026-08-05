@@ -68,8 +68,10 @@ export default function DashboardView({ onIrACliente }) {
           <thead>
             <tr>
               <th>Cliente</th>
-              <th>Horas</th>
+              <th>Pagadas</th>
+              <th>Pendientes</th>
               <th>Ingreso</th>
+              <th>Por cobrar</th>
               <th>Margen</th>
               <th>Rendimiento</th>
             </tr>
@@ -86,8 +88,10 @@ export default function DashboardView({ onIrACliente }) {
                       {c.cliente_nombre}
                     </button>
                   </td>
-                  <td>{horasTexto(c.total_horas)} h</td>
+                  <td>{horasTexto(c.horas_pagadas)} h</td>
+                  <td>{horasTexto(c.horas_pendientes)} h</td>
                   <td>{money(c.ingreso_total)}</td>
+                  <td>{money(c.ingreso_pendiente)}</td>
                   <td className={margenClase}>{money(c.margen)}</td>
                   <td>{alertaBadge(c.alerta)}</td>
                 </tr>

@@ -19,6 +19,8 @@ function initDb(dbPath = DB_PATH) {
 
   migrarGastosFecha(db);
   migrarMontosACentavos(db, dbPath);
+  migrarEntradasTiempoPagado(db);
+  migrarProyectosPagado(db);
 
   return db;
 }
@@ -32,6 +34,30 @@ function migrarGastosFecha(db) {
   if (!tieneFecha) {
     db.exec('ALTER TABLE gastos ADD COLUMN fecha TEXT');
     db.exec("UPDATE gastos SET fecha = date('now') WHERE fecha IS NULL");
+  }
+}
+
+// Bases de datos creadas antes de que entradas_tiempo trackeara el estado de
+// pago necesitan esta migracion. A diferencia de migrarMontosACentavos, no
+// hace falta reconstruir la tabla: SQLite permite ADD COLUMN con un default
+// constante directamente.
+function migrarEntradasTiempoPagado(db) {
+  const columnas = db.prepare('PRAGMA table_info(entradas_tiempo)').all();
+  const tienePagado = columnas.some((c) => c.name === 'pagado');
+  if (!tienePagado) {
+    db.exec('ALTER TABLE entradas_tiempo ADD COLUMN pagado INTEGER NOT NULL DEFAULT 0');
+  }
+}
+
+// Bases de datos creadas antes de que proyectos trackeara el estado de pago
+// (relevante para tipo_cobro = 'fijo') necesitan esta migracion. Mismo caso
+// que migrarEntradasTiempoPagado: ADD COLUMN con default constante, sin
+// reconstruir la tabla.
+function migrarProyectosPagado(db) {
+  const columnas = db.prepare('PRAGMA table_info(proyectos)').all();
+  const tienePagado = columnas.some((c) => c.name === 'pagado');
+  if (!tienePagado) {
+    db.exec('ALTER TABLE proyectos ADD COLUMN pagado INTEGER NOT NULL DEFAULT 0');
   }
 }
 

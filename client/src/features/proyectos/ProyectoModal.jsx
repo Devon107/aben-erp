@@ -10,6 +10,7 @@ export default function ProyectoModal({ open, proyecto, clienteId, onClose, onSa
   const [tarifaHora, setTarifaHora] = useState('');
   const [precioFijo, setPrecioFijo] = useState('');
   const [estado, setEstado] = useState('activo');
+  const [pagado, setPagado] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -18,6 +19,7 @@ export default function ProyectoModal({ open, proyecto, clienteId, onClose, onSa
       setTarifaHora(proyecto?.tarifa_hora ?? '');
       setPrecioFijo(proyecto?.precio_fijo ?? '');
       setEstado(proyecto?.estado ?? 'activo');
+      setPagado(proyecto?.pagado ?? false);
     }
   }, [open, proyecto]);
 
@@ -30,6 +32,7 @@ export default function ProyectoModal({ open, proyecto, clienteId, onClose, onSa
       tarifa_hora: tarifaHora !== '' ? Number(tarifaHora) : null,
       precio_fijo: precioFijo !== '' ? Number(precioFijo) : null,
       estado,
+      pagado: tipoCobro === 'fijo' ? pagado : false,
     };
     try {
       if (proyecto) {
@@ -86,17 +89,23 @@ export default function ProyectoModal({ open, proyecto, clienteId, onClose, onSa
           </label>
         )}
         {tipoCobro === 'fijo' && (
-          <label>
-            Precio fijo
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="0.00"
-              value={precioFijo}
-              onChange={(e) => setPrecioFijo(e.target.value)}
-            />
-          </label>
+          <>
+            <label>
+              Precio fijo
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={precioFijo}
+                onChange={(e) => setPrecioFijo(e.target.value)}
+              />
+            </label>
+            <label className="label-checkbox">
+              <input type="checkbox" checked={pagado} onChange={(e) => setPagado(e.target.checked)} />
+              Ya se cobró el precio fijo
+            </label>
+          </>
         )}
         <label>
           Estado

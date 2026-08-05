@@ -62,6 +62,7 @@ export default function ClienteDetalleView({ cliente, onVolver, onClienteActuali
           proyecto={proyectoAbierto}
           onVolver={() => setProyectoAbiertoId(null)}
           onEditar={abrirEditarProyecto}
+          onActualizado={cargarProyectos}
         />
         <ProyectoModal
           open={modalProyectoAbierto}
@@ -107,6 +108,7 @@ export default function ClienteDetalleView({ cliente, onVolver, onClienteActuali
               onVerDetalle={setProyectoAbiertoId}
               onEditar={abrirEditarProyecto}
               onEliminar={eliminarProyecto}
+              onActualizado={cargarProyectos}
             />
           ))}
         </div>

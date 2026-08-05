@@ -12,6 +12,7 @@ export default function GastosList({ proyectoId, rango, onCambio }) {
   const [fecha, setFecha] = useState(() => isoDateLocal(new Date()));
   const [descripcion, setDescripcion] = useState('');
   const [monto, setMonto] = useState('');
+  const [busqueda, setBusqueda] = useState('');
 
   async function cargarGastos() {
     try {
@@ -27,7 +28,10 @@ export default function GastosList({ proyectoId, rango, onCambio }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [proyectoId]);
 
-  const gastosFiltrados = rango ? gastos?.filter((g) => g.fecha >= rango.desde && g.fecha <= rango.hasta) : gastos;
+  const busquedaNormalizada = busqueda.trim().toLowerCase();
+  const gastosFiltrados = gastos
+    ?.filter((g) => !rango || (g.fecha >= rango.desde && g.fecha <= rango.hasta))
+    .filter((g) => !busquedaNormalizada || g.descripcion.toLowerCase().includes(busquedaNormalizada));
 
   async function agregar(e) {
     e.preventDefault();
@@ -83,11 +87,21 @@ export default function GastosList({ proyectoId, rango, onCambio }) {
           Agregar
         </button>
       </form>
+
+      <div className="filtros-tabla">
+        <input
+          type="search"
+          placeholder="Buscar por descripción..."
+          value={busqueda}
+          onChange={(e) => setBusqueda(e.target.value)}
+        />
+      </div>
+
       <ul className="mini-list mini-list-grande">
         {gastos === null && <li className="mini-empty">Cargando...</li>}
         {gastos !== null && gastos.length === 0 && <li className="mini-empty">Sin gastos registrados.</li>}
         {gastos !== null && gastos.length > 0 && gastosFiltrados.length === 0 && (
-          <li className="mini-empty">Sin resultados para el rango seleccionado.</li>
+          <li className="mini-empty">Sin resultados para los filtros seleccionados.</li>
         )}
         {gastosFiltrados?.map((g) => (
           <li key={g.id}>

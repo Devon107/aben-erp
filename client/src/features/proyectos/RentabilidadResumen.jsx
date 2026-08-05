@@ -14,6 +14,10 @@ export default function RentabilidadResumen({ rentabilidad }) {
         <span className="value">{rentabilidad ? money(rentabilidad.ingreso_total) : <>&hellip;</>}</span>
       </div>
       <div className="rent-mini-item">
+        <span className="label">Por cobrar</span>
+        <span className="value">{rentabilidad ? money(rentabilidad.ingreso_pendiente) : <>&hellip;</>}</span>
+      </div>
+      <div className="rent-mini-item">
         <span className="label">Gastos</span>
         <span className="value">{rentabilidad ? money(rentabilidad.total_gastos) : <>&hellip;</>}</span>
       </div>
