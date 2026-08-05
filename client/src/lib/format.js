@@ -20,6 +20,18 @@ export function fechaCorta(iso) {
   return `${dia} ${MESES_CORTOS[Number(mes) - 1]}`;
 }
 
+// SQLite CURRENT_TIMESTAMP devuelve 'YYYY-MM-DD HH:MM:SS' en UTC. Se parsea
+// como UTC (agregando 'Z') y se muestra en hora local del navegador.
+export function fechaHoraCorta(sqliteDatetime) {
+  if (!sqliteDatetime) return '';
+  const d = new Date(sqliteDatetime.replace(' ', 'T') + 'Z');
+  if (Number.isNaN(d.getTime())) return sqliteDatetime;
+  const dia = String(d.getDate()).padStart(2, '0');
+  const hora = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${dia} ${MESES_CORTOS[d.getMonth()]} ${hora}:${min}`;
+}
+
 export function isoDateLocal(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');

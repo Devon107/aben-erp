@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api.js';
-import { fechaCorta, horasTexto, horasYMinutosADecimal } from '../../lib/format.js';
+import { fechaCorta, fechaHoraCorta, horasTexto, horasYMinutosADecimal } from '../../lib/format.js';
 import { useToast } from '../../components/Toast.jsx';
 import { useConfirm } from '../../components/ConfirmModal.jsx';
 import EntradaTiempoModal from './EntradaTiempoModal.jsx';
+import SubregistrosModal from './SubregistrosModal.jsx';
+import FilaTimerBoton from './FilaTimerBoton.jsx';
 
 // rango === null significa sin filtro (se muestra todo el historial).
 export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal = 0, onCambio }) {
@@ -16,6 +18,8 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
   const [descripcion, setDescripcion] = useState('');
   const [entradaEditando, setEntradaEditando] = useState(null);
   const [modalAbierto, setModalAbierto] = useState(false);
+  const [entradaSubregistros, setEntradaSubregistros] = useState(null);
+  const [subregistrosAbierto, setSubregistrosAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [estadoPago, setEstadoPago] = useState('todos'); // 'todos' | 'pagado' | 'pendiente'
 
@@ -66,6 +70,16 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
   function abrirEditar(entrada) {
     setEntradaEditando(entrada);
     setModalAbierto(true);
+  }
+
+  function abrirSubregistros(entrada) {
+    setEntradaSubregistros(entrada);
+    setSubregistrosAbierto(true);
+  }
+
+  async function onCambioSubregistros() {
+    await cargarEntradas();
+    onCambio();
   }
 
   async function guardarEdicion(payload) {
@@ -160,27 +174,28 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
               <th>Pago</th>
               <th>Descripción</th>
               <th>Origen</th>
+              <th>Creado</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {entradas === null && (
               <tr>
-                <td colSpan="6" className="mini-empty">
+                <td colSpan="7" className="mini-empty">
                   Cargando...
                 </td>
               </tr>
             )}
             {entradas !== null && entradas.length === 0 && (
               <tr>
-                <td colSpan="6" className="mini-empty">
+                <td colSpan="7" className="mini-empty">
                   Sin horas registradas.
                 </td>
               </tr>
             )}
             {entradas !== null && entradas.length > 0 && entradasFiltradas.length === 0 && (
               <tr>
-                <td colSpan="6" className="mini-empty">
+                <td colSpan="7" className="mini-empty">
                   Sin resultados para los filtros seleccionados.
                 </td>
               </tr>
@@ -188,7 +203,11 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
             {entradasFiltradas?.map((t) => (
               <tr key={t.id}>
                 <td>{fechaCorta(t.fecha)}</td>
-                <td>{horasTexto(t.horas)} h</td>
+                <td>
+                  <button type="button" className="horas-link" title="Ver subregistros" onClick={() => abrirSubregistros(t)}>
+                    {horasTexto(t.horas)} h
+                  </button>
+                </td>
                 <td>
                   <button
                     type="button"
@@ -203,8 +222,10 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
                 <td>
                   <span className={`badge-origen badge-origen-${t.origen}`}>{t.origen}</span>
                 </td>
+                <td className="col-creado">{fechaHoraCorta(t.creado_en)}</td>
                 <td>
                   <div className="row-actions-table">
+                    <FilaTimerBoton proyectoId={proyectoId} entradaId={t.id} onRegistrado={onCambioSubregistros} />
                     <button className="btn-icon" title="Editar" onClick={() => abrirEditar(t)}>
                       &#9998;
                     </button>
@@ -224,6 +245,12 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
         entrada={entradaEditando}
         onClose={() => setModalAbierto(false)}
         onGuardar={guardarEdicion}
+      />
+      <SubregistrosModal
+        open={subregistrosAbierto}
+        entrada={entradaSubregistros}
+        onClose={() => setSubregistrosAbierto(false)}
+        onCambio={onCambioSubregistros}
       />
     </div>
   );

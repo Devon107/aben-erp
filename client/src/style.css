@@ -583,6 +583,54 @@ main {
   gap: 0.35rem;
 }
 
+.fila-timer {
+  width: auto;
+  padding: 0 0.5rem;
+}
+
+.fila-timer.activo {
+  font-family: "SF Mono", "Roboto Mono", Consolas, monospace;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.fila-timer:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.horas-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
+.horas-link:hover {
+  color: var(--accent);
+}
+
+.tabla-entradas td.col-creado {
+  color: var(--text-faint);
+  font-size: 0.72rem;
+}
+
+.input-subregistro {
+  width: 70px;
+  flex-shrink: 0;
+}
+
+.subregistros-total {
+  text-align: right;
+  font-weight: 700;
+  font-size: 0.85rem;
+  margin: 0.6rem 0 0;
+}
+
 .badge-origen {
   display: inline-block;
   padding: 0.15rem 0.5rem;

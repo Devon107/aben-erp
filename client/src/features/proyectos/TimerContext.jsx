@@ -40,24 +40,45 @@ export function TimerProvider({ children }) {
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  function iniciarTimer(proyectoId) {
+  // entradaId opcional: si se pasa, el cronómetro queda "adjuntado" a esa
+  // fila existente — al detenerlo se le suma un subregistro en vez de crear
+  // una entrada nueva.
+  function iniciarTimer(proyectoId, entradaId = null) {
     if (activeTimer) {
       showToast('Ya hay un cronómetro activo en otro proyecto', true);
       return;
     }
-    const timer = { proyectoId, startTime: new Date().toISOString() };
+    const timer = { proyectoId, entradaId, startTime: new Date().toISOString() };
     setActiveTimer(timer);
     guardarTimerEnStorage(timer);
   }
 
-  // Devuelve true si se registró una entrada de tiempo (para que quien llame
-  // recargue su lista de entradas y la rentabilidad).
+  // Devuelve true si se registró tiempo (para que quien llame recargue su
+  // lista de entradas y la rentabilidad).
   async function detenerTimer(proyectoId) {
     if (!activeTimer || activeTimer.proyectoId !== proyectoId) return false;
 
     const inicio = new Date(activeTimer.startTime);
     const ahora = new Date();
     const horas = Math.max(0.01, Math.round(((ahora - inicio) / 3600000) * 100) / 100);
+
+    // Adjuntado a una fila existente: se suma directo como subregistro, sin
+    // pedir descripción (la fila ya tiene la suya).
+    if (activeTimer.entradaId) {
+      try {
+        await api(`/api/entradas-tiempo/${activeTimer.entradaId}/subregistros`, {
+          method: 'POST',
+          body: JSON.stringify({ horas, origen: 'timer' }),
+        });
+        setActiveTimer(null);
+        guardarTimerEnStorage(null);
+        showToast(`Tiempo agregado: ${horas} h`);
+        return true;
+      } catch (err) {
+        showToast(err.message, true);
+        return false;
+      }
+    }
 
     const descripcion = await pedirTexto('Descripción breve de la tarea realizada:');
     if (descripcion === null) return false; // el usuario canceló: el cronómetro sigue corriendo

@@ -317,13 +317,29 @@ app.post('/api/entradas-tiempo', (req, res) => {
     return res.status(400).json({ error: 'pagado debe ser true o false' });
   }
 
-  const info = db
-    .prepare(
-      `INSERT INTO entradas_tiempo (proyecto_id, fecha, horas, descripcion, origen, pagado)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    )
-    .run(proyecto_id, fecha, horas, descripcion ?? null, origenFinal, pagadoFinal ? 1 : 0);
-  const entrada = db.prepare('SELECT * FROM entradas_tiempo WHERE id = ?').get(info.lastInsertRowid);
+  // La entrada y su primer subregistro se crean juntos: horas siempre queda
+  // como la suma de subregistros_tiempo (ver recomputarHorasEntrada).
+  // creado_en/actualizado_en se setean explícitos (no vía DEFAULT de columna):
+  // en bases migradas desde una versión sin estas columnas, ALTER TABLE no
+  // pudo dejarles un default (ver migrarEntradasTiempoTimestamps), así que
+  // dependen de que el INSERT los pase siempre.
+  const crearEntradaConSubregistro = db.transaction(() => {
+    const info = db
+      .prepare(
+        `INSERT INTO entradas_tiempo (proyecto_id, fecha, horas, descripcion, origen, pagado, creado_en, actualizado_en)
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+      )
+      .run(proyecto_id, fecha, horas, descripcion ?? null, origenFinal, pagadoFinal ? 1 : 0);
+    db.prepare('INSERT INTO subregistros_tiempo (entrada_tiempo_id, horas, origen) VALUES (?, ?, ?)').run(
+      info.lastInsertRowid,
+      horas,
+      origenFinal
+    );
+    return info.lastInsertRowid;
+  });
+
+  const entradaId = crearEntradaConSubregistro();
+  const entrada = db.prepare('SELECT * FROM entradas_tiempo WHERE id = ?').get(entradaId);
   res.status(201).json(serializarEntrada(entrada));
 });
 
@@ -350,7 +366,7 @@ app.put('/api/entradas-tiempo/:id', (req, res) => {
 
   db.prepare(
     `UPDATE entradas_tiempo
-     SET proyecto_id = ?, fecha = ?, horas = ?, descripcion = ?, origen = ?, pagado = ?
+     SET proyecto_id = ?, fecha = ?, horas = ?, descripcion = ?, origen = ?, pagado = ?, actualizado_en = CURRENT_TIMESTAMP
      WHERE id = ?`
   ).run(proyecto_id, fecha, horas, descripcion, origen, pagado ? 1 : 0, req.params.id);
   const entrada = db.prepare('SELECT * FROM entradas_tiempo WHERE id = ?').get(req.params.id);
@@ -360,6 +376,81 @@ app.put('/api/entradas-tiempo/:id', (req, res) => {
 app.delete('/api/entradas-tiempo/:id', (req, res) => {
   const info = db.prepare('DELETE FROM entradas_tiempo WHERE id = ?').run(req.params.id);
   if (info.changes === 0) return notFound(res, 'Entrada de tiempo');
+  res.status(204).end();
+});
+
+// ---------- Subregistros de tiempo ----------
+// Cada entrada de tiempo puede componerse de varias sesiones (subregistros).
+// entradas_tiempo.horas se mantiene siempre igual a SUM(subregistros.horas)
+// vía recomputarHorasEntrada, llamado despues de cada insert/update/delete acá.
+
+function recomputarHorasEntrada(db, entradaId) {
+  db.prepare(
+    `UPDATE entradas_tiempo
+     SET horas = (SELECT COALESCE(SUM(horas), 0) FROM subregistros_tiempo WHERE entrada_tiempo_id = ?),
+         actualizado_en = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  ).run(entradaId, entradaId);
+}
+
+app.get('/api/entradas-tiempo/:id/subregistros', (req, res) => {
+  const entrada = db.prepare('SELECT id FROM entradas_tiempo WHERE id = ?').get(req.params.id);
+  if (!entrada) return notFound(res, 'Entrada de tiempo');
+  const subregistros = db
+    .prepare('SELECT * FROM subregistros_tiempo WHERE entrada_tiempo_id = ? ORDER BY creado_en, id')
+    .all(req.params.id);
+  res.json(subregistros);
+});
+
+app.post('/api/entradas-tiempo/:id/subregistros', (req, res) => {
+  const entrada = db.prepare('SELECT id FROM entradas_tiempo WHERE id = ?').get(req.params.id);
+  if (!entrada) return notFound(res, 'Entrada de tiempo');
+
+  const { horas, origen } = req.body;
+  if (typeof horas !== 'number' || !Number.isFinite(horas) || horas <= 0) {
+    return res.status(400).json({ error: 'horas debe ser un numero mayor a 0' });
+  }
+  const origenFinal = origen || 'manual';
+  if (!['timer', 'manual'].includes(origenFinal)) {
+    return res.status(400).json({ error: 'origen invalido' });
+  }
+
+  const info = db
+    .prepare('INSERT INTO subregistros_tiempo (entrada_tiempo_id, horas, origen) VALUES (?, ?, ?)')
+    .run(req.params.id, horas, origenFinal);
+  recomputarHorasEntrada(db, req.params.id);
+
+  const subregistro = db.prepare('SELECT * FROM subregistros_tiempo WHERE id = ?').get(info.lastInsertRowid);
+  res.status(201).json(subregistro);
+});
+
+app.put('/api/entradas-tiempo/:id/subregistros/:subId', (req, res) => {
+  const subregistro = db
+    .prepare('SELECT * FROM subregistros_tiempo WHERE id = ? AND entrada_tiempo_id = ?')
+    .get(req.params.subId, req.params.id);
+  if (!subregistro) return notFound(res, 'Subregistro de tiempo');
+
+  const { horas } = req.body;
+  if (typeof horas !== 'number' || !Number.isFinite(horas) || horas <= 0) {
+    return res.status(400).json({ error: 'horas debe ser un numero mayor a 0' });
+  }
+
+  db.prepare('UPDATE subregistros_tiempo SET horas = ?, actualizado_en = CURRENT_TIMESTAMP WHERE id = ?').run(
+    horas,
+    req.params.subId
+  );
+  recomputarHorasEntrada(db, req.params.id);
+
+  const actualizado = db.prepare('SELECT * FROM subregistros_tiempo WHERE id = ?').get(req.params.subId);
+  res.json(actualizado);
+});
+
+app.delete('/api/entradas-tiempo/:id/subregistros/:subId', (req, res) => {
+  const info = db
+    .prepare('DELETE FROM subregistros_tiempo WHERE id = ? AND entrada_tiempo_id = ?')
+    .run(req.params.subId, req.params.id);
+  if (info.changes === 0) return notFound(res, 'Subregistro de tiempo');
+  recomputarHorasEntrada(db, req.params.id);
   res.status(204).end();
 });
 

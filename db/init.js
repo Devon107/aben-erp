@@ -21,6 +21,8 @@ function initDb(dbPath = DB_PATH) {
   migrarMontosACentavos(db, dbPath);
   migrarEntradasTiempoPagado(db);
   migrarProyectosPagado(db);
+  migrarEntradasTiempoTimestamps(db);
+  migrarSubregistrosDesdeEntradas(db);
 
   return db;
 }
@@ -59,6 +61,53 @@ function migrarProyectosPagado(db) {
   if (!tienePagado) {
     db.exec('ALTER TABLE proyectos ADD COLUMN pagado INTEGER NOT NULL DEFAULT 0');
   }
+}
+
+// Bases de datos creadas antes de trackear cuando se crea/actualiza cada
+// entrada de tiempo necesitan esta migracion. SQLite rechaza ADD COLUMN NOT
+// NULL DEFAULT CURRENT_TIMESTAMP en una tabla con filas (lo trata como
+// default no-constante), asi que se agrega nullable y se rellena aparte
+// (mismo patron que migrarGastosFecha). Para las filas preexistentes esto
+// deja creado_en/actualizado_en en el momento de la migracion, no en su
+// fecha real de creacion (nunca se trackeo).
+function migrarEntradasTiempoTimestamps(db) {
+  const columnas = db.prepare('PRAGMA table_info(entradas_tiempo)').all();
+  if (!columnas.some((c) => c.name === 'creado_en')) {
+    db.exec('ALTER TABLE entradas_tiempo ADD COLUMN creado_en TEXT');
+    db.exec("UPDATE entradas_tiempo SET creado_en = datetime('now') WHERE creado_en IS NULL");
+  }
+  if (!columnas.some((c) => c.name === 'actualizado_en')) {
+    db.exec('ALTER TABLE entradas_tiempo ADD COLUMN actualizado_en TEXT');
+    db.exec("UPDATE entradas_tiempo SET actualizado_en = datetime('now') WHERE actualizado_en IS NULL");
+  }
+}
+
+// Backfill: entradas_tiempo.horas pasa a ser la suma de subregistros_tiempo.
+// Toda fila que todavia no tenga ningun subregistro (bases de datos previas a
+// este cambio) recibe uno que replica su horas/origen actuales, para que la
+// suma quede exactamente igual al valor que ya tenia — no se pierde ni se
+// altera ningun dato existente.
+function migrarSubregistrosDesdeEntradas(db) {
+  const sinSubregistros = db
+    .prepare(
+      `SELECT e.id, e.horas, e.origen, e.creado_en
+       FROM entradas_tiempo e
+       LEFT JOIN subregistros_tiempo s ON s.entrada_tiempo_id = e.id
+       WHERE s.id IS NULL`
+    )
+    .all();
+  if (sinSubregistros.length === 0) return;
+
+  const insertar = db.prepare(
+    `INSERT INTO subregistros_tiempo (entrada_tiempo_id, horas, origen, creado_en, actualizado_en)
+     VALUES (?, ?, ?, ?, ?)`
+  );
+  const backfill = db.transaction((filas) => {
+    for (const fila of filas) {
+      insertar.run(fila.id, fila.horas, fila.origen, fila.creado_en, fila.creado_en);
+    }
+  });
+  backfill(sinSubregistros);
 }
 
 function tipoColumna(db, tabla, columna) {
