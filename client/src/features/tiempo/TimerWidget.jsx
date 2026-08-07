@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useTimer } from './TimerContext.jsx';
 import { formatElapsed } from '../../lib/format.js';
+import { useProyectoDetalle } from '../proyectos/ProyectoDetalleContext.jsx';
 
-export default function TimerWidget({ proyectoId, onRegistrado }) {
+export default function TimerWidget({ proyectoId }) {
   const { activeTimer, iniciarTimer, detenerTimer } = useTimer();
+  const { marcarCambio } = useProyectoDetalle();
   const esEsteProyecto = activeTimer?.proyectoId === proyectoId;
   const [, forceTick] = useState(0);
 
@@ -15,7 +17,7 @@ export default function TimerWidget({ proyectoId, onRegistrado }) {
 
   async function onDetener() {
     const registrado = await detenerTimer(proyectoId);
-    if (registrado) await onRegistrado?.();
+    if (registrado) marcarCambio();
   }
 
   if (esEsteProyecto) {

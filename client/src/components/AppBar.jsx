@@ -1,18 +1,24 @@
-export default function AppBar({ vista, clienteNombre, onIrDashboard, onIrClientes }) {
+import { Link, useLocation } from 'react-router-dom';
+
+export default function AppBar({ clienteNombre }) {
+  const location = useLocation();
+  const enDashboard = location.pathname === '/';
+  const enClienteDetalle = location.pathname.startsWith('/clientes/');
+
   return (
     <header className="appbar">
       <div className="brand">Freelance Tracker</div>
       <nav className="breadcrumb">
-        <button className={`crumb ${vista === 'dashboard' ? 'active' : ''}`} onClick={onIrDashboard}>
+        <Link className={`crumb ${enDashboard ? 'active' : ''}`} to="/">
           Dashboard
-        </button>
+        </Link>
         <span className="crumb-sep">
           <span>/</span>
         </span>
-        <button className={`crumb ${vista !== 'dashboard' ? 'active' : ''}`} onClick={onIrClientes}>
+        <Link className={`crumb ${!enDashboard ? 'active' : ''}`} to="/clientes">
           Clientes
-        </button>
-        {vista === 'cliente' && (
+        </Link>
+        {enClienteDetalle && clienteNombre && (
           <span className="crumb-sep">
             <span>/</span>
             <span>{clienteNombre}</span>

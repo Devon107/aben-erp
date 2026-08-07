@@ -4,14 +4,17 @@ import { fechaHoraCorta, horasTexto } from '../../lib/format.js';
 import { useToast } from '../../components/Toast.jsx';
 import { useConfirm } from '../../components/ConfirmModal.jsx';
 import Modal from '../../components/Modal.jsx';
+import { useProyectoDetalle } from '../proyectos/ProyectoDetalleContext.jsx';
 
 // Detalle de las sesiones (subregistros) que componen el total de horas de
 // una entrada de tiempo. Cada subregistro es editable y eliminable; el total
 // de la fila (entradas_tiempo.horas) se recalcula en el backend con cada
-// cambio — acá solo se refresca la lista y se avisa al padre via onCambio.
-export default function SubregistrosModal({ open, entrada, onClose, onCambio }) {
+// cambio — acá solo se refresca la lista propia y se avisa al resto de la
+// vista de detalle via marcarCambio() (ver ProyectoDetalleContext.jsx).
+export default function SubregistrosModal({ open, entrada, onClose }) {
   const showToast = useToast();
   const confirmar = useConfirm();
+  const { marcarCambio } = useProyectoDetalle();
   const [subregistros, setSubregistros] = useState(null); // null = cargando
   const [valores, setValores] = useState({}); // id -> texto editable del input
 
@@ -44,7 +47,7 @@ export default function SubregistrosModal({ open, entrada, onClose, onCambio }) 
       });
       showToast('Subregistro actualizado');
       await cargar();
-      onCambio();
+      marcarCambio();
     } catch (err) {
       showToast(err.message, true);
     }
@@ -56,7 +59,7 @@ export default function SubregistrosModal({ open, entrada, onClose, onCambio }) 
       await api(`/api/entradas-tiempo/${entrada.id}/subregistros/${sub.id}`, { method: 'DELETE' });
       showToast('Subregistro eliminado');
       await cargar();
-      onCambio();
+      marcarCambio();
     } catch (err) {
       showToast(err.message, true);
     }

@@ -5,15 +5,24 @@ import { useRangoFecha } from '../../lib/useRangoFecha.js';
 import { useToast } from '../../components/Toast.jsx';
 import RangoSelector from '../../components/RangoSelector.jsx';
 import RentabilidadResumen from './RentabilidadResumen.jsx';
-import TimerWidget from './TimerWidget.jsx';
-import EntradasTiempoTable from './EntradasTiempoTable.jsx';
-import GastosList from './GastosList.jsx';
+import TimerWidget from '../tiempo/TimerWidget.jsx';
+import EntradasTiempoTable from '../tiempo/EntradasTiempoTable.jsx';
+import GastosList from '../gastos/GastosList.jsx';
+import { ProyectoDetalleProvider, useProyectoDetalle } from './ProyectoDetalleContext.jsx';
 
-export default function ProyectoDetalleView({ proyecto, onVolver, onEditar, onActualizado }) {
+export default function ProyectoDetalleView(props) {
+  return (
+    <ProyectoDetalleProvider>
+      <ProyectoDetalleViewInner {...props} />
+    </ProyectoDetalleProvider>
+  );
+}
+
+function ProyectoDetalleViewInner({ proyecto, onVolver, onEditar, onActualizado }) {
   const showToast = useToast();
+  const { senalRecarga } = useProyectoDetalle();
   const [rentabilidad, setRentabilidad] = useState(null);
   const [tab, setTab] = useState('tiempos'); // 'tiempos' | 'gastos'
-  const [tiempoRefrescarSenal, setTiempoRefrescarSenal] = useState(0);
   const { preset, setPreset, desdeInput, setDesdeInput, hastaInput, setHastaInput, presets, rango } = useRangoFecha({
     incluirTodo: true,
   });
@@ -26,17 +35,12 @@ export default function ProyectoDetalleView({ proyecto, onVolver, onEditar, onAc
       });
   }, [proyecto.id]);
 
+  // senalRecarga la bump cualquier cambio de tiempo del proyecto (cronómetro
+  // de cabecera, cronómetro por fila, o edición/borrado de un subregistro) —
+  // ver ProyectoDetalleContext.jsx.
   useEffect(() => {
     cargarRentabilidad();
-  }, [cargarRentabilidad]);
-
-  // El cronómetro vive en el header (visible sin importar la pestaña activa),
-  // así que su registro tiene que refrescar tanto la rentabilidad como la
-  // tabla de tiempos si está montada.
-  async function onTimerRegistrado() {
-    setTiempoRefrescarSenal((n) => n + 1);
-    cargarRentabilidad();
-  }
+  }, [cargarRentabilidad, senalRecarga]);
 
   const tarifaTexto =
     proyecto.tipo_cobro === 'hora' ? `${money(proyecto.tarifa_hora)} / hora` : `${money(proyecto.precio_fijo)} fijo`;
@@ -84,7 +88,7 @@ export default function ProyectoDetalleView({ proyecto, onVolver, onEditar, onAc
         </div>
       </div>
 
-      <TimerWidget proyectoId={proyecto.id} onRegistrado={onTimerRegistrado} />
+      <TimerWidget proyectoId={proyecto.id} />
 
       <RentabilidadResumen rentabilidad={rentabilidad} />
 
@@ -109,12 +113,7 @@ export default function ProyectoDetalleView({ proyecto, onVolver, onEditar, onAc
       </div>
 
       {tab === 'tiempos' ? (
-        <EntradasTiempoTable
-          proyectoId={proyecto.id}
-          rango={rango}
-          refrescarSenal={tiempoRefrescarSenal}
-          onCambio={cargarRentabilidad}
-        />
+        <EntradasTiempoTable proyectoId={proyecto.id} rango={rango} />
       ) : (
         <GastosList proyectoId={proyecto.id} rango={rango} onCambio={cargarRentabilidad} />
       )}

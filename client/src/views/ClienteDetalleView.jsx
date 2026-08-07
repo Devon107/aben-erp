@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useToast } from '../components/Toast.jsx';
 import { useConfirm } from '../components/ConfirmModal.jsx';
@@ -8,10 +9,16 @@ import ProyectoCard from '../features/proyectos/ProyectoCard.jsx';
 import ProyectoDetalleView from '../features/proyectos/ProyectoDetalleView.jsx';
 
 export default function ClienteDetalleView({ cliente, onVolver, onClienteActualizado }) {
+  const navigate = useNavigate();
+  const params = useParams();
+  // El resto de la ruta (el "*" de /clientes/:clienteId/*) trae "proyectos/<id>"
+  // cuando hay un proyecto abierto, o "" cuando estamos en la grilla.
+  const proyectoIdMatch = params['*']?.match(/^proyectos\/(\d+)$/);
+  const proyectoIdUrl = proyectoIdMatch ? Number(proyectoIdMatch[1]) : null;
+
   const showToast = useToast();
   const confirmar = useConfirm();
   const [proyectos, setProyectos] = useState([]);
-  const [proyectoAbiertoId, setProyectoAbiertoId] = useState(null); // id del proyecto en vista de detalle, o null
   const [modalClienteAbierto, setModalClienteAbierto] = useState(false);
   const [modalProyectoAbierto, setModalProyectoAbierto] = useState(false);
   const [proyectoEditando, setProyectoEditando] = useState(null);
@@ -26,7 +33,6 @@ export default function ClienteDetalleView({ cliente, onVolver, onClienteActuali
   }
 
   useEffect(() => {
-    setProyectoAbiertoId(null);
     cargarProyectos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cliente.id]);
@@ -46,21 +52,22 @@ export default function ClienteDetalleView({ cliente, onVolver, onClienteActuali
     try {
       await api(`/api/proyectos/${proyecto.id}`, { method: 'DELETE' });
       showToast('Proyecto eliminado');
-      setProyectoAbiertoId((actual) => (actual === proyecto.id ? null : actual));
+      if (proyecto.id === proyectoIdUrl) navigate(`/clientes/${cliente.id}`);
       await cargarProyectos();
     } catch (err) {
       showToast(err.message, true);
     }
   }
 
-  const proyectoAbierto = proyectos.find((p) => p.id === proyectoAbiertoId) ?? null;
+  const proyectoAbierto = proyectoIdUrl ? proyectos.find((p) => p.id === proyectoIdUrl) ?? null : null;
 
-  if (proyectoAbierto) {
+  if (proyectoIdUrl) {
+    if (!proyectoAbierto) return null; // proyectos aún cargando, o id invalido en la URL
     return (
       <>
         <ProyectoDetalleView
           proyecto={proyectoAbierto}
-          onVolver={() => setProyectoAbiertoId(null)}
+          onVolver={() => navigate(`/clientes/${cliente.id}`)}
           onEditar={abrirEditarProyecto}
           onActualizado={cargarProyectos}
         />
@@ -105,7 +112,7 @@ export default function ClienteDetalleView({ cliente, onVolver, onClienteActuali
             <ProyectoCard
               key={p.id}
               proyecto={p}
-              onVerDetalle={setProyectoAbiertoId}
+              onVerDetalle={(id) => navigate(`/clientes/${cliente.id}/proyectos/${id}`)}
               onEditar={abrirEditarProyecto}
               onEliminar={eliminarProyecto}
               onActualizado={cargarProyectos}

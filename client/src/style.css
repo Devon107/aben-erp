@@ -81,6 +81,7 @@ body {
   font-size: 0.9rem;
   cursor: pointer;
   padding: 0.2rem 0;
+  text-decoration: none;
 }
 
 .crumb:hover {

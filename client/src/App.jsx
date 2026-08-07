@@ -1,19 +1,38 @@
 import { useEffect, useState } from 'react';
+import { HashRouter, Routes, Route, matchPath, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from './lib/api.js';
 import { ToastProvider, useToast } from './components/Toast.jsx';
 import { ConfirmProvider } from './components/ConfirmModal.jsx';
 import { PromptProvider } from './components/PromptModal.jsx';
-import { TimerProvider } from './features/proyectos/TimerContext.jsx';
+import { TimerProvider } from './features/tiempo/TimerContext.jsx';
 import AppBar from './components/AppBar.jsx';
 import DashboardView from './views/DashboardView.jsx';
 import ClientesView from './views/ClientesView.jsx';
 import ClienteDetalleView from './views/ClienteDetalleView.jsx';
 
+// El cliente ya está cargado en AppShell (cargarClientes); esta ruta solo
+// resuelve cuál es por el :clienteId de la URL.
+function ClienteDetalleRoute({ clientes, onClienteActualizado }) {
+  const { clienteId } = useParams();
+  const navigate = useNavigate();
+  const cliente = clientes.find((c) => c.id === Number(clienteId)) ?? null;
+
+  if (!cliente) return null; // clientes aún cargando, o id invalido en la URL
+
+  return (
+    <ClienteDetalleView
+      cliente={cliente}
+      onVolver={() => navigate('/clientes')}
+      onClienteActualizado={onClienteActualizado}
+    />
+  );
+}
+
 function AppShell() {
   const showToast = useToast();
-  const [vista, setVista] = useState('dashboard'); // 'dashboard' | 'clientes' | 'cliente'
+  const navigate = useNavigate();
+  const location = useLocation();
   const [clientes, setClientes] = useState([]);
-  const [clienteActualId, setClienteActualId] = useState(null);
 
   async function cargarClientes() {
     try {
@@ -29,34 +48,28 @@ function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const clienteActual = clientes.find((c) => c.id === clienteActualId) ?? null;
-
-  function irADashboard() {
-    setVista('dashboard');
-    setClienteActualId(null);
-  }
-
-  function irAClientes() {
-    setVista('clientes');
-    setClienteActualId(null);
-  }
+  const matchCliente = matchPath('/clientes/:clienteId/*', location.pathname);
+  const clienteActual = matchCliente ? clientes.find((c) => c.id === Number(matchCliente.params.clienteId)) : null;
 
   function irACliente(id) {
-    setClienteActualId(id);
-    setVista('cliente');
+    navigate(`/clientes/${id}`);
   }
 
   return (
     <div className="app">
-      <AppBar vista={vista} clienteNombre={clienteActual?.nombre} onIrDashboard={irADashboard} onIrClientes={irAClientes} />
+      <AppBar clienteNombre={clienteActual?.nombre} />
       <main>
-        {vista === 'dashboard' && <DashboardView onIrACliente={irACliente} />}
-        {vista === 'clientes' && (
-          <ClientesView clientes={clientes} onClientesChange={cargarClientes} onIrACliente={irACliente} />
-        )}
-        {vista === 'cliente' && clienteActual && (
-          <ClienteDetalleView cliente={clienteActual} onVolver={irAClientes} onClienteActualizado={cargarClientes} />
-        )}
+        <Routes>
+          <Route path="/" element={<DashboardView onIrACliente={irACliente} />} />
+          <Route
+            path="/clientes"
+            element={<ClientesView clientes={clientes} onClientesChange={cargarClientes} onIrACliente={irACliente} />}
+          />
+          <Route
+            path="/clientes/:clienteId/*"
+            element={<ClienteDetalleRoute clientes={clientes} onClienteActualizado={cargarClientes} />}
+          />
+        </Routes>
       </main>
     </div>
   );
@@ -64,14 +77,16 @@ function AppShell() {
 
 export default function App() {
   return (
-    <ToastProvider>
-      <ConfirmProvider>
-        <PromptProvider>
-          <TimerProvider>
-            <AppShell />
-          </TimerProvider>
-        </PromptProvider>
-      </ConfirmProvider>
-    </ToastProvider>
+    <HashRouter>
+      <ToastProvider>
+        <ConfirmProvider>
+          <PromptProvider>
+            <TimerProvider>
+              <AppShell />
+            </TimerProvider>
+          </PromptProvider>
+        </ConfirmProvider>
+      </ToastProvider>
+    </HashRouter>
   );
 }

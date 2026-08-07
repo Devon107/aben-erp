@@ -13,4 +13,8 @@ module.exports = defineConfig({
       '/api': 'http://localhost:3000',
     },
   },
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test-setup.js'],
+  },
 });

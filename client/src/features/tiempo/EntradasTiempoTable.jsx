@@ -3,14 +3,16 @@ import { api } from '../../lib/api.js';
 import { fechaCorta, fechaHoraCorta, horasTexto, horasYMinutosADecimal } from '../../lib/format.js';
 import { useToast } from '../../components/Toast.jsx';
 import { useConfirm } from '../../components/ConfirmModal.jsx';
+import { useProyectoDetalle } from '../proyectos/ProyectoDetalleContext.jsx';
 import EntradaTiempoModal from './EntradaTiempoModal.jsx';
 import SubregistrosModal from './SubregistrosModal.jsx';
 import FilaTimerBoton from './FilaTimerBoton.jsx';
 
 // rango === null significa sin filtro (se muestra todo el historial).
-export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal = 0, onCambio }) {
+export default function EntradasTiempoTable({ proyectoId, rango }) {
   const showToast = useToast();
   const confirmar = useConfirm();
+  const { senalRecarga, marcarCambio } = useProyectoDetalle();
   const [entradas, setEntradas] = useState(null); // null = cargando
   const [fecha, setFecha] = useState('');
   const [horas, setHoras] = useState('');
@@ -35,7 +37,7 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
   useEffect(() => {
     cargarEntradas();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [proyectoId, refrescarSenal]);
+  }, [proyectoId, senalRecarga]);
 
   const busquedaNormalizada = busqueda.trim().toLowerCase();
   const entradasFiltradas = entradas
@@ -60,8 +62,7 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
       setMinutos('');
       setDescripcion('');
       showToast('Horas registradas');
-      await cargarEntradas();
-      onCambio();
+      marcarCambio();
     } catch (err) {
       showToast(err.message, true);
     }
@@ -77,18 +78,12 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
     setSubregistrosAbierto(true);
   }
 
-  async function onCambioSubregistros() {
-    await cargarEntradas();
-    onCambio();
-  }
-
   async function guardarEdicion(payload) {
     try {
       await api(`/api/entradas-tiempo/${entradaEditando.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       showToast('Entrada actualizada');
       setModalAbierto(false);
-      await cargarEntradas();
-      onCambio();
+      marcarCambio();
     } catch (err) {
       showToast(err.message, true);
     }
@@ -101,8 +96,7 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
         body: JSON.stringify({ pagado: !entrada.pagado }),
       });
       showToast(entrada.pagado ? 'Marcada como pendiente' : 'Marcada como pagada');
-      await cargarEntradas();
-      onCambio();
+      marcarCambio();
     } catch (err) {
       showToast(err.message, true);
     }
@@ -113,8 +107,7 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
     try {
       await api(`/api/entradas-tiempo/${entrada.id}`, { method: 'DELETE' });
       showToast('Entrada eliminada');
-      await cargarEntradas();
-      onCambio();
+      marcarCambio();
     } catch (err) {
       showToast(err.message, true);
     }
@@ -225,7 +218,7 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
                 <td className="col-creado">{fechaHoraCorta(t.creado_en)}</td>
                 <td>
                   <div className="row-actions-table">
-                    <FilaTimerBoton proyectoId={proyectoId} entradaId={t.id} onRegistrado={onCambioSubregistros} />
+                    <FilaTimerBoton proyectoId={proyectoId} entradaId={t.id} />
                     <button className="btn-icon" title="Editar" onClick={() => abrirEditar(t)}>
                       &#9998;
                     </button>
@@ -250,7 +243,6 @@ export default function EntradasTiempoTable({ proyectoId, rango, refrescarSenal 
         open={subregistrosAbierto}
         entrada={entradaSubregistros}
         onClose={() => setSubregistrosAbierto(false)}
-        onCambio={onCambioSubregistros}
       />
     </div>
   );
