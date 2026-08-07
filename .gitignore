@@ -4,6 +4,8 @@ data/tracker.db.bak
 data/*.db-journal
 *.log
 AUDIT.md
+PLAN_ARQUITECTURA.md
+CONTEXTO_PROYECTO.md
 
 # Build de producción de Vite (se genera con `bun run build`)
 public/
