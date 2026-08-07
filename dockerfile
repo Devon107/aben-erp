@@ -28,6 +28,8 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/public ./public
 COPY package.json server.js ./
 COPY db ./db
+COPY lib ./lib
+COPY routes ./routes
 
 # data/ contiene la base SQLite; se monta como volumen para persistir entre
 # reconstrucciones de la imagen.
