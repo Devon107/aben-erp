@@ -6,6 +6,7 @@ data/*.db-journal
 AUDIT.md
 PLAN_ARQUITECTURA.md
 CONTEXTO_PROYECTO.md
+design/
 
 # Build de producción de Vite (se genera con `bun run build`)
 public/
