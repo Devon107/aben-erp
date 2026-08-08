@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../../lib/api.js';
 import { money } from '../../lib/format.js';
 import { useRangoFecha } from '../../lib/useRangoFecha.js';
@@ -18,7 +19,7 @@ export default function ProyectoDetalleView(props) {
   );
 }
 
-function ProyectoDetalleViewInner({ proyecto, onVolver, onEditar, onActualizado }) {
+function ProyectoDetalleViewInner({ proyecto, cliente, onVolver, onEditar, onActualizado }) {
   const showToast = useToast();
   const { senalRecarga } = useProyectoDetalle();
   const [rentabilidad, setRentabilidad] = useState(null);
@@ -58,8 +59,18 @@ function ProyectoDetalleViewInner({ proyecto, onVolver, onEditar, onActualizado 
     }
   }
 
+  const presupuesto = proyecto.tipo_cobro === 'fijo' ? proyecto.precio_fijo : null;
+  const gastado = rentabilidad ? rentabilidad.total_gastos : null;
+  const presupuestoPct =
+    presupuesto && gastado !== null && presupuesto > 0 ? Math.round((gastado / presupuesto) * 100) : null;
+
   return (
     <section>
+      <div className="page-breadcrumb">
+        <Link to="/">Dashboard</Link> / <Link to="/clientes">Clientes</Link> /{' '}
+        {cliente ? <Link to={`/clientes/${cliente.id}`}>{cliente.nombre}</Link> : null} /{' '}
+        <span className="breadcrumb-current">{proyecto.nombre}</span>
+      </div>
       <div className="view-header">
         <div className="view-header-title">
           <button className="btn-link" onClick={onVolver}>
@@ -91,6 +102,24 @@ function ProyectoDetalleViewInner({ proyecto, onVolver, onEditar, onActualizado 
       <TimerWidget proyectoId={proyecto.id} />
 
       <RentabilidadResumen rentabilidad={rentabilidad} />
+
+      {presupuestoPct !== null && (
+        <div className="budget-progress">
+          <div className="budget-progress-row">
+            <div>Costo vs. presupuesto</div>
+            <strong>
+              {money(gastado)} / {money(presupuesto)}
+            </strong>
+          </div>
+          <div className="budget-track">
+            <div
+              className={`budget-fill ${presupuestoPct > 100 ? 'over' : ''}`}
+              style={{ width: `${Math.min(presupuestoPct, 100)}%` }}
+            />
+          </div>
+          <div className="budget-note">{presupuestoPct}% del presupuesto usado</div>
+        </div>
+      )}
 
       <div className="reporte-controles">
         <div className="tabs">

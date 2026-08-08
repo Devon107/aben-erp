@@ -6,7 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev": "concurrently -n server,client -c blue,green \"bun:dev:server\" \"bun:dev:client\"",
     "dev:server": "node --watch server.js",
     "dev:client": "vite",
     "build": "vite build",

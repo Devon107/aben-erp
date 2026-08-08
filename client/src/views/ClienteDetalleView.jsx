@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
+import { iniciales } from '../lib/format.js';
 import { useToast } from '../components/Toast.jsx';
 import { useConfirm } from '../components/ConfirmModal.jsx';
 import ClienteModal from '../components/ClienteModal.jsx';
@@ -67,6 +68,7 @@ export default function ClienteDetalleView({ cliente, onVolver, onClienteActuali
       <>
         <ProyectoDetalleView
           proyecto={proyectoAbierto}
+          cliente={cliente}
           onVolver={() => navigate(`/clientes/${cliente.id}`)}
           onEditar={abrirEditarProyecto}
           onActualizado={cargarProyectos}
@@ -84,12 +86,17 @@ export default function ClienteDetalleView({ cliente, onVolver, onClienteActuali
 
   return (
     <section>
+      <div className="page-breadcrumb">
+        <Link to="/">Dashboard</Link> / <Link to="/clientes">Clientes</Link> /{' '}
+        <span className="breadcrumb-current">{cliente.nombre}</span>
+      </div>
       <div className="view-header">
         <div className="view-header-title">
           <button className="btn-link" onClick={onVolver}>
             &larr; Clientes
           </button>
           <div className="title-row">
+            <span className="avatar-initials-lg">{iniciales(cliente.nombre)}</span>
             <h1>{cliente.nombre}</h1>
             <span className="badge badge-modo">{cliente.modo_facturacion}</span>
           </div>

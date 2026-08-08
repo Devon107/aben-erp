@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../lib/api.js';
+import { iniciales } from '../lib/format.js';
 import { useToast } from '../components/Toast.jsx';
 import { useConfirm } from '../components/ConfirmModal.jsx';
 import ClienteModal from '../components/ClienteModal.jsx';
@@ -49,7 +50,10 @@ export default function ClientesView({ clientes, onClientesChange, onIrACliente 
           {clientes.map((c) => (
             <div key={c.id} className="cliente-card" onClick={() => onIrACliente(c.id)}>
               <div className="cliente-card-top">
-                <h3>{c.nombre}</h3>
+                <div className="entity-with-avatar">
+                  <span className="avatar-initials">{iniciales(c.nombre)}</span>
+                  <h3>{c.nombre}</h3>
+                </div>
                 <div className="cliente-card-actions">
                   <button
                     className="btn-icon"

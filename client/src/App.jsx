@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { HashRouter, Routes, Route, matchPath, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { HashRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import { api } from './lib/api.js';
 import { ToastProvider, useToast } from './components/Toast.jsx';
 import { ConfirmProvider } from './components/ConfirmModal.jsx';
 import { PromptProvider } from './components/PromptModal.jsx';
 import { TimerProvider } from './features/tiempo/TimerContext.jsx';
-import AppBar from './components/AppBar.jsx';
+import Sidebar from './components/Sidebar.jsx';
 import DashboardView from './views/DashboardView.jsx';
 import ClientesView from './views/ClientesView.jsx';
 import ClienteDetalleView from './views/ClienteDetalleView.jsx';
@@ -31,7 +31,6 @@ function ClienteDetalleRoute({ clientes, onClienteActualizado }) {
 function AppShell() {
   const showToast = useToast();
   const navigate = useNavigate();
-  const location = useLocation();
   const [clientes, setClientes] = useState([]);
 
   async function cargarClientes() {
@@ -48,17 +47,14 @@ function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const matchCliente = matchPath('/clientes/:clienteId/*', location.pathname);
-  const clienteActual = matchCliente ? clientes.find((c) => c.id === Number(matchCliente.params.clienteId)) : null;
-
   function irACliente(id) {
     navigate(`/clientes/${id}`);
   }
 
   return (
-    <div className="app">
-      <AppBar clienteNombre={clienteActual?.nombre} />
-      <main>
+    <div className="app-shell">
+      <Sidebar />
+      <main className="main-content">
         <Routes>
           <Route path="/" element={<DashboardView onIrACliente={irACliente} />} />
           <Route

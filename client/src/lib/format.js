@@ -48,6 +48,15 @@ export function decimalAHorasYMinutos(decimal) {
   return { horas: Math.floor(totalMinutos / 60), minutos: totalMinutos % 60 };
 }
 
+export function iniciales(nombre) {
+  return (nombre || '')
+    .split(' ')
+    .filter(Boolean)
+    .map((palabra) => palabra[0].toUpperCase())
+    .slice(0, 2)
+    .join('');
+}
+
 export function formatElapsed(ms) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const h = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
