@@ -10,7 +10,7 @@ function createApp(db) {
 
   app.use('/api/clientes', require('./routes/clientes')(db));
   app.use('/api/proyectos', require('./routes/proyectos')(db));
-  app.use('/api/entradas-tiempo', require('./routes/entradasTiempo')(db));
+  app.use('/api/tareas', require('./routes/tareas')(db));
   app.use('/api/gastos', require('./routes/gastos')(db));
   app.use('/api/dashboard', require('./routes/dashboard')(db));
 

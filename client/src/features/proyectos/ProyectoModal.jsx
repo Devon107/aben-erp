@@ -6,34 +6,18 @@ import Modal from '../../components/Modal.jsx';
 export default function ProyectoModal({ open, proyecto, clienteId, onClose, onSaved }) {
   const showToast = useToast();
   const [nombre, setNombre] = useState('');
-  const [tipoCobro, setTipoCobro] = useState('hora');
-  const [tarifaHora, setTarifaHora] = useState('');
-  const [precioFijo, setPrecioFijo] = useState('');
   const [estado, setEstado] = useState('activo');
-  const [pagado, setPagado] = useState(false);
 
   useEffect(() => {
     if (open) {
       setNombre(proyecto?.nombre ?? '');
-      setTipoCobro(proyecto?.tipo_cobro ?? 'hora');
-      setTarifaHora(proyecto?.tarifa_hora ?? '');
-      setPrecioFijo(proyecto?.precio_fijo ?? '');
       setEstado(proyecto?.estado ?? 'activo');
-      setPagado(proyecto?.pagado ?? false);
     }
   }, [open, proyecto]);
 
   async function guardar(e) {
     e.preventDefault();
-    const payload = {
-      cliente_id: clienteId,
-      nombre,
-      tipo_cobro: tipoCobro,
-      tarifa_hora: tarifaHora !== '' ? Number(tarifaHora) : null,
-      precio_fijo: precioFijo !== '' ? Number(precioFijo) : null,
-      estado,
-      pagado: tipoCobro === 'fijo' ? pagado : false,
-    };
+    const payload = { cliente_id: clienteId, nombre, estado };
     try {
       if (proyecto) {
         await api(`/api/proyectos/${proyecto.id}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -68,45 +52,6 @@ export default function ProyectoModal({ open, proyecto, clienteId, onClose, onSa
             onChange={(e) => setNombre(e.target.value)}
           />
         </label>
-        <label>
-          Tipo de cobro
-          <select value={tipoCobro} onChange={(e) => setTipoCobro(e.target.value)} required>
-            <option value="hora">Por hora</option>
-            <option value="fijo">Precio fijo</option>
-          </select>
-        </label>
-        {tipoCobro === 'hora' && (
-          <label>
-            Tarifa por hora
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="0.00"
-              value={tarifaHora}
-              onChange={(e) => setTarifaHora(e.target.value)}
-            />
-          </label>
-        )}
-        {tipoCobro === 'fijo' && (
-          <>
-            <label>
-              Precio fijo
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                value={precioFijo}
-                onChange={(e) => setPrecioFijo(e.target.value)}
-              />
-            </label>
-            <label className="label-checkbox">
-              <input type="checkbox" checked={pagado} onChange={(e) => setPagado(e.target.checked)} />
-              Ya se cobró el precio fijo
-            </label>
-          </>
-        )}
         <label>
           Estado
           <select value={estado} onChange={(e) => setEstado(e.target.value)}>

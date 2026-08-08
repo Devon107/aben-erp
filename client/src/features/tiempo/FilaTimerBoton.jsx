@@ -3,14 +3,13 @@ import { useTimer } from './TimerContext.jsx';
 import { formatElapsed } from '../../lib/format.js';
 import { useProyectoDetalle } from '../proyectos/ProyectoDetalleContext.jsx';
 
-// Cronómetro adjuntado a una fila de entradas_tiempo puntual: al detenerse
-// suma un subregistro a esa fila en vez de crear una entrada nueva (ver
-// TimerContext.detenerTimer). Mismo patrón de ticking que TimerWidget.jsx,
-// parametrizado por fila.
-export default function FilaTimerBoton({ proyectoId, entradaId }) {
+// Cronómetro adjuntado a una tarea puntual: al detenerse suma un log de
+// tiempo a esa tarea en vez de pedir elegir una (ver TimerContext.detenerTimer).
+// Mismo patrón de ticking que TimerWidget.jsx, parametrizado por fila.
+export default function FilaTimerBoton({ proyectoId, tareaId }) {
   const { activeTimer, iniciarTimer, detenerTimer } = useTimer();
   const { marcarCambio } = useProyectoDetalle();
-  const esEstaFila = activeTimer?.proyectoId === proyectoId && activeTimer?.entradaId === entradaId;
+  const esEstaFila = activeTimer?.proyectoId === proyectoId && activeTimer?.tareaId === tareaId;
   const [, forceTick] = useState(0);
 
   useEffect(() => {
@@ -39,7 +38,7 @@ export default function FilaTimerBoton({ proyectoId, entradaId }) {
       className="btn-icon fila-timer"
       title={activeTimer ? 'Ya hay un cronómetro activo' : 'Iniciar cronómetro para esta fila'}
       disabled={!!activeTimer}
-      onClick={() => iniciarTimer(proyectoId, entradaId)}
+      onClick={() => iniciarTimer(proyectoId, tareaId)}
     >
       ▶
     </button>

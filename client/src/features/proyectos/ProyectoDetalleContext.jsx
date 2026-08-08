@@ -2,10 +2,10 @@ import { createContext, useCallback, useContext, useState } from 'react';
 
 const ProyectoDetalleContext = createContext(null);
 
-// Centraliza "recargar rentabilidad (y la tabla de tiempos) de este proyecto"
+// Centraliza "recargar rentabilidad (y la tabla de tareas) de este proyecto"
 // en una sola señal, en vez de threading manual de onCambio/refrescarSenal/
-// onRegistrado entre ProyectoDetalleView, EntradasTiempoTable,
-// SubregistrosModal, FilaTimerBoton y TimerWidget.
+// onRegistrado entre ProyectoDetalleView, TareasTable, TareaDetalleView,
+// FilaTimerBoton y TimerWidget.
 export function ProyectoDetalleProvider({ children }) {
   const [senalRecarga, setSenalRecarga] = useState(0);
   const marcarCambio = useCallback(() => setSenalRecarga((n) => n + 1), []);

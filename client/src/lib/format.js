@@ -12,6 +12,11 @@ export function horasTexto(n) {
   return (n ?? 0).toFixed(2);
 }
 
+export function mesCorto(aaaaMm) {
+  const [, mes] = aaaaMm.split('-');
+  return MESES_CORTOS[Number(mes) - 1];
+}
+
 export function fechaCorta(iso) {
   if (!iso) return '';
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);

@@ -2,40 +2,40 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { ToastProvider } from '../../components/Toast.jsx';
 import { ConfirmProvider } from '../../components/ConfirmModal.jsx';
-import { PromptProvider } from '../../components/PromptModal.jsx';
-import { TimerProvider } from './TimerContext.jsx';
+import { TareaPickerProvider } from '../../components/TareaPickerModal.jsx';
+import { TimerProvider } from '../tiempo/TimerContext.jsx';
 import { ProyectoDetalleProvider } from '../proyectos/ProyectoDetalleContext.jsx';
-import EntradasTiempoTable from './EntradasTiempoTable.jsx';
+import TareasTable from './TareasTable.jsx';
 
-const ENTRADAS = [
-  { id: 1, fecha: '2026-08-01', horas: 1, descripcion: 'Reunion cliente', origen: 'manual', pagado: true, creado_en: '2026-08-01T10:00:00' },
-  { id: 2, fecha: '2026-08-02', horas: 2, descripcion: 'Desarrollo backend', origen: 'manual', pagado: false, creado_en: '2026-08-02T10:00:00' },
-  { id: 3, fecha: '2026-08-03', horas: 0.5, descripcion: 'Reunion equipo', origen: 'timer', pagado: true, creado_en: '2026-08-03T10:00:00' },
-  { id: 4, fecha: '2026-08-04', horas: 1.5, descripcion: 'Reunion ventas', origen: 'manual', pagado: false, creado_en: '2026-08-04T10:00:00' },
+const TAREAS = [
+  { id: 1, nombre: 'Reunion cliente', tipo_cobro: 'hora', tarifa_hora: 50, precio_fijo: null, horas: 1, estado: 'completada', pagado: true, fecha_limite: null },
+  { id: 2, nombre: 'Desarrollo backend', tipo_cobro: 'hora', tarifa_hora: 50, precio_fijo: null, horas: 2, estado: 'en_curso', pagado: false, fecha_limite: null },
+  { id: 3, nombre: 'Reunion equipo', tipo_cobro: 'fijo', tarifa_hora: null, precio_fijo: 100, horas: 0.5, estado: 'completada', pagado: true, fecha_limite: null },
+  { id: 4, nombre: 'Reunion ventas', tipo_cobro: 'hora', tarifa_hora: 50, precio_fijo: null, horas: 1.5, estado: 'pendiente', pagado: false, fecha_limite: null },
 ];
 
 function renderTabla() {
   return render(
     <ToastProvider>
       <ConfirmProvider>
-        <PromptProvider>
+        <TareaPickerProvider>
           <TimerProvider>
             <ProyectoDetalleProvider>
-              <EntradasTiempoTable proyectoId={1} rango={null} />
+              <TareasTable proyectoId={1} onVerTarea={() => {}} />
             </ProyectoDetalleProvider>
           </TimerProvider>
-        </PromptProvider>
+        </TareaPickerProvider>
       </ConfirmProvider>
     </ToastProvider>
   );
 }
 
-describe('EntradasTiempoTable: filtrado combinado', () => {
+describe('TareasTable: filtrado combinado', () => {
   beforeEach(() => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ENTRADAS,
+      json: async () => TAREAS,
     });
   });
 
@@ -44,7 +44,7 @@ describe('EntradasTiempoTable: filtrado combinado', () => {
     vi.restoreAllMocks();
   });
 
-  it('sin filtros muestra todas las entradas', async () => {
+  it('sin filtros muestra todas las tareas', async () => {
     renderTabla();
     await waitFor(() => expect(screen.getByText('Reunion cliente')).toBeInTheDocument());
     expect(screen.getByText('Desarrollo backend')).toBeInTheDocument();
@@ -52,11 +52,11 @@ describe('EntradasTiempoTable: filtrado combinado', () => {
     expect(screen.getByText('Reunion ventas')).toBeInTheDocument();
   });
 
-  it('el buscador por descripción filtra sin importar el estado de pago', async () => {
+  it('el buscador por nombre filtra sin importar el estado de pago', async () => {
     renderTabla();
     await waitFor(() => expect(screen.getByText('Reunion cliente')).toBeInTheDocument());
 
-    fireEvent.change(screen.getByPlaceholderText('Buscar por descripción...'), { target: { value: 'reunion' } });
+    fireEvent.change(screen.getByPlaceholderText('Buscar por nombre...'), { target: { value: 'reunion' } });
 
     expect(screen.getByText('Reunion cliente')).toBeInTheDocument();
     expect(screen.getByText('Reunion equipo')).toBeInTheDocument();
@@ -64,11 +64,11 @@ describe('EntradasTiempoTable: filtrado combinado', () => {
     expect(screen.queryByText('Desarrollo backend')).not.toBeInTheDocument();
   });
 
-  it('combina búsqueda por descripción y filtro de pago (AND, no OR)', async () => {
+  it('combina búsqueda por nombre y filtro de pago (AND, no OR)', async () => {
     renderTabla();
     await waitFor(() => expect(screen.getByText('Reunion cliente')).toBeInTheDocument());
 
-    fireEvent.change(screen.getByPlaceholderText('Buscar por descripción...'), { target: { value: 'reunion' } });
+    fireEvent.change(screen.getByPlaceholderText('Buscar por nombre...'), { target: { value: 'reunion' } });
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'pagado' } });
 
     // "Reunion cliente" y "Reunion equipo" coinciden con el texto y están pagadas.
@@ -80,11 +80,11 @@ describe('EntradasTiempoTable: filtrado combinado', () => {
     expect(screen.queryByText('Desarrollo backend')).not.toBeInTheDocument();
   });
 
-  it('muestra un mensaje cuando los filtros no matchean ninguna entrada', async () => {
+  it('muestra un mensaje cuando los filtros no matchean ninguna tarea', async () => {
     renderTabla();
     await waitFor(() => expect(screen.getByText('Reunion cliente')).toBeInTheDocument());
 
-    fireEvent.change(screen.getByPlaceholderText('Buscar por descripción...'), { target: { value: 'inexistente' } });
+    fireEvent.change(screen.getByPlaceholderText('Buscar por nombre...'), { target: { value: 'inexistente' } });
 
     expect(screen.getByText('Sin resultados para los filtros seleccionados.')).toBeInTheDocument();
   });

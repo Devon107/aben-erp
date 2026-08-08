@@ -5,142 +5,126 @@ const fs = require('node:fs');
 const os = require('node:os');
 const Database = require('better-sqlite3');
 const { initDb } = require('../db/init');
-const { createApp } = require('../server');
-const { crearAppDePrueba, conServidor, crearProyecto } = require('./helpers');
+const { crearAppDePrueba, conServidor, crearProyecto, crearTarea } = require('./helpers');
 
-test('POST /api/entradas-tiempo crea la entrada y su primer subregistro', async () => {
+test('POST /api/tareas/:id/subregistros agrega tiempo y recalcula el total (con fecha)', async () => {
   const { app, db } = crearAppDePrueba();
   const proyectoId = crearProyecto(db);
+  const tareaId = crearTarea(db, proyectoId);
 
   await conServidor(app, async (base) => {
-    const res = await fetch(`${base}/api/entradas-tiempo`, {
+    const res = await fetch(`${base}/api/tareas/${tareaId}/subregistros`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ proyecto_id: proyectoId, fecha: '2026-07-10', horas: 2, descripcion: 'x' }),
-    });
-    assert.equal(res.status, 201);
-    const entrada = await res.json();
-    assert.equal(entrada.horas, 2);
-
-    const subregistros = db.prepare('SELECT * FROM subregistros_tiempo WHERE entrada_tiempo_id = ?').all(entrada.id);
-    assert.equal(subregistros.length, 1);
-    assert.equal(subregistros[0].horas, 2);
-    assert.equal(subregistros[0].origen, 'manual');
-  });
-});
-
-test('POST /api/entradas-tiempo/:id/subregistros agrega tiempo y recalcula el total', async () => {
-  const { app, db } = crearAppDePrueba();
-  const proyectoId = crearProyecto(db);
-
-  await conServidor(app, async (base) => {
-    const creada = await (
-      await fetch(`${base}/api/entradas-tiempo`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proyecto_id: proyectoId, fecha: '2026-07-10', horas: 1 }),
-      })
-    ).json();
-
-    const res = await fetch(`${base}/api/entradas-tiempo/${creada.id}/subregistros`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ horas: 1.5, origen: 'timer' }),
+      body: JSON.stringify({ horas: 1.5, fecha: '2026-07-10', origen: 'timer' }),
     });
     assert.equal(res.status, 201);
     const subregistro = await res.json();
     assert.equal(subregistro.horas, 1.5);
+    assert.equal(subregistro.fecha, '2026-07-10');
     assert.equal(subregistro.origen, 'timer');
 
-    const entradaActualizada = await (await fetch(`${base}/api/entradas-tiempo/${creada.id}`)).json();
-    assert.equal(entradaActualizada.horas, 2.5); // 1 + 1.5
+    const tareaActualizada = await (await fetch(`${base}/api/tareas/${tareaId}`)).json();
+    assert.equal(tareaActualizada.horas, 1.5);
   });
 });
 
-test('PUT /api/entradas-tiempo/:id/subregistros/:subId edita horas y recalcula', async () => {
+test('POST /api/tareas/:id/subregistros usa la fecha de hoy si no se manda', async () => {
   const { app, db } = crearAppDePrueba();
   const proyectoId = crearProyecto(db);
+  const tareaId = crearTarea(db, proyectoId);
+  const hoy = new Date().toISOString().slice(0, 10);
 
   await conServidor(app, async (base) => {
-    const creada = await (
-      await fetch(`${base}/api/entradas-tiempo`, {
+    const res = await fetch(`${base}/api/tareas/${tareaId}/subregistros`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ horas: 1 }),
+    });
+    const subregistro = await res.json();
+    assert.equal(subregistro.fecha, hoy);
+  });
+});
+
+test('PUT /api/tareas/:id/subregistros/:subId edita horas y fecha, recalcula', async () => {
+  const { app, db } = crearAppDePrueba();
+  const proyectoId = crearProyecto(db);
+  const tareaId = crearTarea(db, proyectoId);
+
+  await conServidor(app, async (base) => {
+    const creado = await (
+      await fetch(`${base}/api/tareas/${tareaId}/subregistros`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proyecto_id: proyectoId, fecha: '2026-07-10', horas: 3 }),
+        body: JSON.stringify({ horas: 3, fecha: '2026-07-10' }),
       })
     ).json();
-    const [subregistro] = db.prepare('SELECT * FROM subregistros_tiempo WHERE entrada_tiempo_id = ?').all(creada.id);
 
-    const res = await fetch(`${base}/api/entradas-tiempo/${creada.id}/subregistros/${subregistro.id}`, {
+    const res = await fetch(`${base}/api/tareas/${tareaId}/subregistros/${creado.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ horas: 5 }),
+      body: JSON.stringify({ horas: 5, fecha: '2026-07-11' }),
     });
     assert.equal(res.status, 200);
     const editado = await res.json();
     assert.equal(editado.horas, 5);
+    assert.equal(editado.fecha, '2026-07-11');
 
-    const entradaActualizada = await (await fetch(`${base}/api/entradas-tiempo/${creada.id}`)).json();
-    assert.equal(entradaActualizada.horas, 5);
+    const tareaActualizada = await (await fetch(`${base}/api/tareas/${tareaId}`)).json();
+    assert.equal(tareaActualizada.horas, 5);
   });
 });
 
-test('DELETE /api/entradas-tiempo/:id/subregistros/:subId elimina y recalcula (puede llegar a 0)', async () => {
+test('DELETE /api/tareas/:id/subregistros/:subId elimina y recalcula (puede llegar a 0)', async () => {
   const { app, db } = crearAppDePrueba();
   const proyectoId = crearProyecto(db);
+  const tareaId = crearTarea(db, proyectoId);
 
   await conServidor(app, async (base) => {
-    const creada = await (
-      await fetch(`${base}/api/entradas-tiempo`, {
+    const creado = await (
+      await fetch(`${base}/api/tareas/${tareaId}/subregistros`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proyecto_id: proyectoId, fecha: '2026-07-10', horas: 2 }),
+        body: JSON.stringify({ horas: 2, fecha: '2026-07-10' }),
       })
     ).json();
-    const [subregistro] = db.prepare('SELECT * FROM subregistros_tiempo WHERE entrada_tiempo_id = ?').all(creada.id);
 
-    const res = await fetch(`${base}/api/entradas-tiempo/${creada.id}/subregistros/${subregistro.id}`, {
-      method: 'DELETE',
-    });
+    const res = await fetch(`${base}/api/tareas/${tareaId}/subregistros/${creado.id}`, { method: 'DELETE' });
     assert.equal(res.status, 204);
 
-    const entradaActualizada = await (await fetch(`${base}/api/entradas-tiempo/${creada.id}`)).json();
-    assert.equal(entradaActualizada.horas, 0);
-
-    const restantes = db.prepare('SELECT * FROM subregistros_tiempo WHERE entrada_tiempo_id = ?').all(creada.id);
-    assert.equal(restantes.length, 0);
+    const tareaActualizada = await (await fetch(`${base}/api/tareas/${tareaId}`)).json();
+    assert.equal(tareaActualizada.horas, 0);
   });
 });
 
-test('GET /api/entradas-tiempo/:id/subregistros lista ordenado, y valida horas/origen', async () => {
+test('GET /api/tareas/:id/subregistros lista ordenado, y valida horas/origen', async () => {
   const { app, db } = crearAppDePrueba();
   const proyectoId = crearProyecto(db);
+  const tareaId = crearTarea(db, proyectoId);
 
   await conServidor(app, async (base) => {
-    const creada = await (
-      await fetch(`${base}/api/entradas-tiempo`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proyecto_id: proyectoId, fecha: '2026-07-10', horas: 1 }),
-      })
-    ).json();
-    await fetch(`${base}/api/entradas-tiempo/${creada.id}/subregistros`, {
+    await fetch(`${base}/api/tareas/${tareaId}/subregistros`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ horas: 1, origen: 'timer' }),
+      body: JSON.stringify({ horas: 1, fecha: '2026-07-10', origen: 'timer' }),
+    });
+    await fetch(`${base}/api/tareas/${tareaId}/subregistros`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ horas: 1, fecha: '2026-07-11' }),
     });
 
-    const lista = await (await fetch(`${base}/api/entradas-tiempo/${creada.id}/subregistros`)).json();
+    const lista = await (await fetch(`${base}/api/tareas/${tareaId}/subregistros`)).json();
     assert.equal(lista.length, 2);
 
-    const resHorasInvalidas = await fetch(`${base}/api/entradas-tiempo/${creada.id}/subregistros`, {
+    const resHorasInvalidas = await fetch(`${base}/api/tareas/${tareaId}/subregistros`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ horas: -1 }),
     });
     assert.equal(resHorasInvalidas.status, 400);
 
-    const resOrigenInvalido = await fetch(`${base}/api/entradas-tiempo/${creada.id}/subregistros`, {
+    const resOrigenInvalido = await fetch(`${base}/api/tareas/${tareaId}/subregistros`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ horas: 1, origen: 'otro' }),
@@ -149,14 +133,14 @@ test('GET /api/entradas-tiempo/:id/subregistros lista ordenado, y valida horas/o
   });
 });
 
-test('subregistros de una entrada/id inexistente devuelven 404', async () => {
+test('subregistros de una tarea/id inexistente devuelven 404', async () => {
   const { app } = crearAppDePrueba();
 
   await conServidor(app, async (base) => {
-    const resGet = await fetch(`${base}/api/entradas-tiempo/9999/subregistros`);
+    const resGet = await fetch(`${base}/api/tareas/9999/subregistros`);
     assert.equal(resGet.status, 404);
 
-    const resPost = await fetch(`${base}/api/entradas-tiempo/9999/subregistros`, {
+    const resPost = await fetch(`${base}/api/tareas/9999/subregistros`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ horas: 1 }),
@@ -165,70 +149,99 @@ test('subregistros de una entrada/id inexistente devuelven 404', async () => {
   });
 });
 
-test('migrarSubregistrosDesdeEntradas rellena subregistros para filas legacy sin tocar su horas', () => {
+// Simula el camino de actualizacion completo de una base creada antes de que
+// 'tarea' existiera como entidad: proyectos con tipo_cobro/tarifa_hora,
+// entradas_tiempo (una con subregistro ya cargado, otra "legacy" sin ningun
+// subregistro y sin columnas de timestamp) y subregistros_tiempo con
+// entrada_tiempo_id. Un solo initDb() debe encadenar
+// migrarEntradasTiempoTimestamps -> migrarSubregistrosDesdeEntradas ->
+// migrarEntradasATareas sin perder ni alterar ningun dato existente.
+test('migrarEntradasATareas migra entradas_tiempo legacy a tareas, preservando pagado/horas/fecha de subregistros', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aben-erp-test-'));
-  const dbPath = path.join(dir, 'legacy.db');
-  const db = initDb(dbPath); // crea el schema completo, incluyendo subregistros_tiempo
-  const proyectoId = crearProyecto(db);
-
-  // Simula una fila "legacy" insertada antes de que existiera subregistros_tiempo:
-  // se inserta directo en entradas_tiempo, sin pasar por el POST de la API.
-  const entradaId = db
-    .prepare("INSERT INTO entradas_tiempo (proyecto_id, fecha, horas, origen) VALUES (?, '2026-05-01', 7.5, 'manual')")
-    .run(proyectoId).lastInsertRowid;
-
-  // Re-correr initDb sobre el mismo archivo dispara la migracion de backfill.
-  db.close();
-  const db2 = initDb(dbPath);
-
-  const subregistros = db2.prepare('SELECT * FROM subregistros_tiempo WHERE entrada_tiempo_id = ?').all(entradaId);
-  assert.equal(subregistros.length, 1);
-  assert.equal(subregistros[0].horas, 7.5);
-  assert.equal(subregistros[0].origen, 'manual');
-
-  const entrada = db2.prepare('SELECT horas FROM entradas_tiempo WHERE id = ?').get(entradaId);
-  assert.equal(entrada.horas, 7.5); // el backfill no altera el valor preexistente
-});
-
-// SQLite no permite ALTER TABLE ADD COLUMN NOT NULL DEFAULT CURRENT_TIMESTAMP
-// en una tabla con filas, asi que migrarEntradasTiempoTimestamps agrega la
-// columna sin default y la rellena aparte (ver db/init.js). Eso deja la
-// columna SIN default a nivel de schema en bases migradas — si el INSERT de
-// POST /api/entradas-tiempo no seteara creado_en/actualizado_en de forma
-// explicita, las filas nuevas quedarian con esos campos en NULL. Este test
-// simula exactamente ese escenario (tabla creada "a mano" sin las columnas,
-// como quedaria una base real antes de este cambio).
-test('POST /api/entradas-tiempo en una base migrada via ALTER TABLE igual setea creado_en/actualizado_en', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aben-erp-test-'));
-  const dbPath = path.join(dir, 'legacy-timestamps.db');
+  const dbPath = path.join(dir, 'legacy-tareas.db');
 
   const raw = new Database(dbPath);
   raw.exec(`
+    CREATE TABLE clientes (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT NOT NULL, modo_facturacion TEXT NOT NULL);
+    CREATE TABLE proyectos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cliente_id INTEGER NOT NULL,
+      nombre TEXT NOT NULL,
+      tipo_cobro TEXT NOT NULL,
+      tarifa_hora INTEGER,
+      precio_fijo INTEGER,
+      estado TEXT NOT NULL DEFAULT 'activo',
+      pagado INTEGER NOT NULL DEFAULT 0
+    );
     CREATE TABLE entradas_tiempo (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       proyecto_id INTEGER NOT NULL,
       fecha TEXT NOT NULL,
       horas REAL NOT NULL DEFAULT 0,
       descripcion TEXT,
-      origen TEXT NOT NULL DEFAULT 'manual' CHECK (origen IN ('timer', 'manual')),
+      origen TEXT NOT NULL DEFAULT 'manual',
       pagado INTEGER NOT NULL DEFAULT 0
     );
+    CREATE TABLE subregistros_tiempo (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entrada_tiempo_id INTEGER NOT NULL,
+      horas REAL NOT NULL,
+      origen TEXT NOT NULL DEFAULT 'manual',
+      creado_en TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      actualizado_en TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
   `);
+  const clienteId = raw.prepare("INSERT INTO clientes (nombre, modo_facturacion) VALUES ('C', 'hora')").run()
+    .lastInsertRowid;
+  const proyectoId = raw
+    .prepare("INSERT INTO proyectos (cliente_id, nombre, tipo_cobro, tarifa_hora, estado) VALUES (?, 'P', 'hora', 5000, 'activo')")
+    .run(clienteId).lastInsertRowid;
+  const entradaPagadaId = raw
+    .prepare("INSERT INTO entradas_tiempo (proyecto_id, fecha, horas, descripcion, pagado) VALUES (?, '2026-06-01', 2, 'Sesion A', 1)")
+    .run(proyectoId).lastInsertRowid;
+  raw.prepare('INSERT INTO subregistros_tiempo (entrada_tiempo_id, horas, origen) VALUES (?, 2, ?)').run(entradaPagadaId, 'manual');
+  // entrada legacy sin ningun subregistro (previa a que existiera esa tabla)
+  const entradaSinSubId = raw
+    .prepare("INSERT INTO entradas_tiempo (proyecto_id, fecha, horas, descripcion, pagado) VALUES (?, '2026-06-05', 4, '', 0)")
+    .run(proyectoId).lastInsertRowid;
   raw.close();
 
-  const db = initDb(dbPath); // dispara migrarEntradasTiempoTimestamps via ALTER TABLE
-  const app = createApp(db);
-  const proyectoId = crearProyecto(db);
+  // Un solo initDb encadena: migrarEntradasTiempoTimestamps (agrega
+  // creado_en/actualizado_en a entradas_tiempo) -> migrarSubregistrosDesdeEntradas
+  // (backfill del subregistro faltante) -> migrarEntradasATareas.
+  const db = initDb(dbPath);
 
-  await conServidor(app, async (base) => {
-    const res = await fetch(`${base}/api/entradas-tiempo`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ proyecto_id: proyectoId, fecha: '2026-08-05', horas: 1 }),
-    });
-    assert.equal(res.status, 201);
-    const entrada = await res.json();
-    assert.ok(entrada.creado_en, 'creado_en no deberia quedar null en una base migrada');
-    assert.ok(entrada.actualizado_en, 'actualizado_en no deberia quedar null en una base migrada');
-  });
+  const tareaPagada = db.prepare('SELECT * FROM tareas WHERE id = ?').get(entradaPagadaId);
+  assert.equal(tareaPagada.nombre, 'Sesion A');
+  assert.equal(tareaPagada.tipo_cobro, 'hora');
+  assert.equal(tareaPagada.tarifa_hora, 5000);
+  assert.equal(tareaPagada.pagado, 1);
+  assert.equal(tareaPagada.estado, 'completada');
+  assert.equal(tareaPagada.horas, 2);
+  assert.ok(tareaPagada.creado_en, 'creado_en no deberia quedar null tras la migracion de timestamps');
+
+  const tareaSinNombre = db.prepare('SELECT * FROM tareas WHERE id = ?').get(entradaSinSubId);
+  assert.equal(tareaSinNombre.nombre, 'Sesión de trabajo'); // descripcion vacia -> nombre por defecto
+  assert.equal(tareaSinNombre.estado, 'pendiente');
+  assert.equal(tareaSinNombre.horas, 4); // el backfill de subregistro no altera el valor preexistente
+
+  const subsTareaPagada = db.prepare('SELECT * FROM subregistros_tiempo WHERE tarea_id = ?').all(entradaPagadaId);
+  assert.equal(subsTareaPagada.length, 1);
+  assert.equal(subsTareaPagada[0].fecha, '2026-06-01'); // heredada de la entrada padre
+
+  const subsTareaSinSub = db.prepare('SELECT * FROM subregistros_tiempo WHERE tarea_id = ?').all(entradaSinSubId);
+  assert.equal(subsTareaSinSub.length, 1); // backfill de migrarSubregistrosDesdeEntradas
+  assert.equal(subsTareaSinSub[0].horas, 4);
+  assert.equal(subsTareaSinSub[0].fecha, '2026-06-05');
+
+  const tablas = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+    .all()
+    .map((r) => r.name);
+  assert.ok(!tablas.includes('entradas_tiempo'));
+
+  const proyectoCols = db.prepare('PRAGMA table_info(proyectos)').all().map((c) => c.name);
+  assert.ok(!proyectoCols.includes('tipo_cobro'));
+
+  assert.deepEqual(db.pragma('foreign_key_check'), []);
 });

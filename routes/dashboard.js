@@ -1,5 +1,10 @@
 const express = require('express');
-const { calcularDashboard } = require('../db/queries');
+const {
+  calcularDashboard,
+  calcularTendenciaMensual,
+  listarTareasPendientesDeCobro,
+  listarProyectosEnRiesgo,
+} = require('../db/queries');
 
 const FECHA_ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -16,7 +21,14 @@ function crearRouter(db) {
     }
 
     const clientesResultado = calcularDashboard(db, desde, hasta);
-    res.json({ desde, hasta, clientes: clientesResultado });
+    res.json({
+      desde,
+      hasta,
+      clientes: clientesResultado,
+      tendenciaMensual: calcularTendenciaMensual(db),
+      tareasPendientes: listarTareasPendientesDeCobro(db),
+      proyectosEnRiesgo: listarProyectosEnRiesgo(db),
+    });
   });
 
   return router;

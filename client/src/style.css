@@ -839,6 +839,37 @@ body {
   color: var(--accent-2);
 }
 
+.tabla-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tabla-link:hover {
+  color: var(--accent-2);
+  text-decoration: underline;
+}
+
+.badge-tarea-pendiente {
+  background: var(--gray-dim);
+  color: var(--gray);
+}
+
+.badge-tarea-en_curso {
+  background: var(--accent-dim);
+  color: var(--accent-2);
+}
+
+.badge-tarea-completada {
+  background: var(--green-dim);
+  color: var(--green);
+}
+
 .tabla-entradas td.col-creado {
   color: var(--text-faint);
   font-size: 0.72rem;
@@ -1208,4 +1239,90 @@ input::placeholder {
 .badge-alerta.bajo {
   background: var(--amber-dim);
   color: var(--amber);
+}
+
+/* ---------- Dashboard: tendencia mensual + paneles nuevos ---------- */
+
+.dashboard-bottom-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .dashboard-bottom-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chart-legend {
+  display: flex;
+  gap: 14px;
+}
+
+.chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.chart-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.chart-legend-dot.ingresos {
+  background: var(--accent);
+}
+
+.chart-legend-dot.gastos {
+  background: var(--surface-3);
+}
+
+.chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  height: 170px;
+  padding: 0 4px;
+}
+
+.chart-bar-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+.chart-bar-pair {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 140px;
+}
+
+.chart-bar {
+  width: 16px;
+  border-radius: 4px 4px 0 0;
+  min-height: 2px;
+}
+
+.chart-bar.ingresos {
+  background: linear-gradient(180deg, var(--accent-2), var(--accent));
+}
+
+.chart-bar.gastos {
+  background: var(--surface-3);
+}
+
+.chart-bar-label {
+  font-size: 0.68rem;
+  color: var(--text-faint);
 }

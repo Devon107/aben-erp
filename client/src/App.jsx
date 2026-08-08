@@ -3,7 +3,7 @@ import { HashRouter, Routes, Route, useNavigate, useParams } from 'react-router-
 import { api } from './lib/api.js';
 import { ToastProvider, useToast } from './components/Toast.jsx';
 import { ConfirmProvider } from './components/ConfirmModal.jsx';
-import { PromptProvider } from './components/PromptModal.jsx';
+import { TareaPickerProvider } from './components/TareaPickerModal.jsx';
 import { TimerProvider } from './features/tiempo/TimerContext.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import DashboardView from './views/DashboardView.jsx';
@@ -76,11 +76,11 @@ export default function App() {
     <HashRouter>
       <ToastProvider>
         <ConfirmProvider>
-          <PromptProvider>
+          <TareaPickerProvider>
             <TimerProvider>
               <AppShell />
             </TimerProvider>
-          </PromptProvider>
+          </TareaPickerProvider>
         </ConfirmProvider>
       </ToastProvider>
     </HashRouter>

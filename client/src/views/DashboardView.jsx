@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { calcularAlertas } from '../lib/logic.js';
-import { fechaCorta, horasTexto, iniciales, money } from '../lib/format.js';
+import { fechaCorta, horasTexto, iniciales, mesCorto, money } from '../lib/format.js';
 import { useRangoFecha } from '../lib/useRangoFecha.js';
 import { useToast } from '../components/Toast.jsx';
 import RangoSelector from '../components/RangoSelector.jsx';
@@ -31,11 +31,19 @@ export default function DashboardView({ onIrACliente }) {
   const showToast = useToast();
   const { preset, setPreset, desdeInput, setDesdeInput, hastaInput, setHastaInput, presets, rango } = useRangoFecha();
   const [clientesData, setClientesData] = useState([]);
+  const [tendenciaMensual, setTendenciaMensual] = useState([]);
+  const [tareasPendientes, setTareasPendientes] = useState([]);
+  const [proyectosEnRiesgo, setProyectosEnRiesgo] = useState([]);
 
   useEffect(() => {
     if (!rango) return;
     api(`/api/dashboard?desde=${rango.desde}&hasta=${rango.hasta}`)
-      .then((data) => setClientesData(calcularAlertas(data.clientes)))
+      .then((data) => {
+        setClientesData(calcularAlertas(data.clientes));
+        setTendenciaMensual(data.tendenciaMensual);
+        setTareasPendientes(data.tareasPendientes);
+        setProyectosEnRiesgo(data.proyectosEnRiesgo);
+      })
       .catch((err) => showToast(err.message, true));
     // rango se deriva de preset/desdeInput/hastaInput; usar sus campos evita
     // refetch por una nueva identidad de objeto en cada render.
@@ -144,6 +152,88 @@ export default function DashboardView({ onIrACliente }) {
 
         {clientesData.length === 0 && <p className="empty-state">No hay datos para el rango seleccionado.</p>}
       </div>
+
+      {tendenciaMensual.length > 0 && <TendenciaMensualChart datos={tendenciaMensual} />}
+
+      <div className="dashboard-bottom-row">
+        <div className="card-panel">
+          <div className="card-panel-header">
+            <div className="card-panel-title">Tareas pendientes de cobro</div>
+          </div>
+          {tareasPendientes.length === 0 ? (
+            <p className="mini-empty">No hay tareas pendientes de cobro.</p>
+          ) : (
+            <ul className="mini-list mini-list-grande">
+              {tareasPendientes.map((t) => (
+                <li key={t.id}>
+                  <div className="item-main">
+                    <span className="item-title">{t.nombre}</span>
+                    <span className="item-sub">
+                      {t.cliente} · {t.proyecto}
+                      {t.fecha_limite && ` · vence ${fechaCorta(t.fecha_limite)}`}
+                    </span>
+                  </div>
+                  <span className="item-value">{money(t.monto)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="card-panel">
+          <div className="card-panel-header">
+            <div className="card-panel-title">Proyectos en riesgo</div>
+          </div>
+          {proyectosEnRiesgo.length === 0 ? (
+            <p className="mini-empty">Ningún proyecto tiene tareas con fecha límite próxima o vencida.</p>
+          ) : (
+            <ul className="mini-list mini-list-grande">
+              {proyectosEnRiesgo.map((p) => (
+                <li key={p.proyecto_id}>
+                  <div className="item-main">
+                    <span className="item-title">{p.proyecto_nombre}</span>
+                    <span className="item-sub">{p.cliente_nombre}</span>
+                  </div>
+                  <span className={`badge-alerta ${p.vencido ? 'perdida' : 'bajo'}`}>
+                    {p.vencido ? 'Vencida' : `vence ${fechaCorta(p.fecha_limite)}`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </section>
+  );
+}
+
+function TendenciaMensualChart({ datos }) {
+  const maxValor = Math.max(...datos.flatMap((m) => [m.ingresos, m.gastos]), 1);
+
+  return (
+    <div className="card-panel">
+      <div className="card-panel-header">
+        <div className="card-panel-title">Ingresos vs. gastos</div>
+        <div className="chart-legend">
+          <span className="chart-legend-item">
+            <span className="chart-legend-dot ingresos" /> Ingresos
+          </span>
+          <span className="chart-legend-item">
+            <span className="chart-legend-dot gastos" /> Gastos
+          </span>
+        </div>
+      </div>
+      <div className="chart-bars">
+        {datos.map((m) => (
+          <div className="chart-bar-group" key={m.mes}>
+            <div className="chart-bar-pair">
+              <div className="chart-bar ingresos" style={{ height: `${(m.ingresos / maxValor) * 100}%` }} title={money(m.ingresos)} />
+              <div className="chart-bar gastos" style={{ height: `${(m.gastos / maxValor) * 100}%` }} title={money(m.gastos)} />
+            </div>
+            <div className="chart-bar-label">{mesCorto(m.mes)}</div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
