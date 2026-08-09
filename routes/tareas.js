@@ -1,9 +1,8 @@
 const express = require('express');
-const { notFound, aCentavos, validarEnum, requerirNumeroPositivo } = require('../lib/http');
-const { serializarTarea, recomputarHorasTarea } = require('../db/queries');
+const { notFound, validarEnum, requerirNumeroPositivo } = require('../lib/http');
+const { serializarTarea, recomputarHorasTarea, registrarActividad } = require('../db/queries');
 
 const ORIGENES = ['timer', 'manual'];
-const TIPOS_COBRO = ['hora', 'fijo'];
 const ESTADOS = ['pendiente', 'en_curso', 'completada'];
 
 function validarHoras(horas) {
@@ -11,6 +10,10 @@ function validarHoras(horas) {
     return 'horas debe ser un numero mayor a 0';
   }
   return null;
+}
+
+function clienteIdDeProyecto(db, proyectoId) {
+  return db.prepare('SELECT cliente_id FROM proyectos WHERE id = ?').get(proyectoId).cliente_id;
 }
 
 function crearRouter(db) {
@@ -27,6 +30,37 @@ function crearRouter(db) {
     res.json(tareas.map(serializarTarea));
   });
 
+  // Ruta literal, tiene que ir antes de '/:id' para que Express no la
+  // matchee como un id.
+  router.put('/marcar-pagadas', (req, res) => {
+    const { ids, fecha_cobro } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'ids debe ser un array no vacío' });
+    }
+    const fechaCobroFinal = fecha_cobro || new Date().toISOString().slice(0, 10);
+
+    const actualizadas = [];
+    for (const id of ids) {
+      const existing = db.prepare('SELECT * FROM tareas WHERE id = ?').get(id);
+      if (!existing || existing.pagado) continue; // inexistente o ya pagada: se ignora
+
+      db.prepare('UPDATE tareas SET pagado = 1, fecha_cobro = ?, actualizado_en = CURRENT_TIMESTAMP WHERE id = ?').run(
+        fechaCobroFinal,
+        id
+      );
+      registrarActividad(db, {
+        cliente_id: clienteIdDeProyecto(db, existing.proyecto_id),
+        proyecto_id: existing.proyecto_id,
+        tarea_id: id,
+        tipo: 'pagado',
+        descripcion: `Tarea "${existing.nombre}" marcada como pagada`,
+        fecha: fechaCobroFinal,
+      });
+      actualizadas.push(id);
+    }
+    res.json({ actualizadas });
+  });
+
   router.get('/:id', (req, res) => {
     const tarea = db.prepare('SELECT * FROM tareas WHERE id = ?').get(req.params.id);
     if (!tarea) return notFound(res, 'Tarea');
@@ -34,19 +68,13 @@ function crearRouter(db) {
   });
 
   router.post('/', (req, res) => {
-    const { proyecto_id, nombre, tipo_cobro, tarifa_hora, precio_fijo, estado, fecha_limite, pagado, fecha_cobro } = req.body;
-    if (!proyecto_id || !nombre || !tipo_cobro) {
-      return res.status(400).json({ error: 'proyecto_id, nombre y tipo_cobro son requeridos' });
+    const { proyecto_id, nombre, estado, fecha_limite, horas_estimadas, pagado, fecha_cobro } = req.body;
+    if (!proyecto_id || !nombre) {
+      return res.status(400).json({ error: 'proyecto_id y nombre son requeridos' });
     }
-    const errorTipo = validarEnum(tipo_cobro, TIPOS_COBRO, 'tipo_cobro');
-    if (errorTipo) return res.status(400).json({ error: errorTipo });
-    if (tarifa_hora != null) {
-      const errorTarifa = requerirNumeroPositivo(tarifa_hora, 'tarifa_hora');
-      if (errorTarifa) return res.status(400).json({ error: errorTarifa });
-    }
-    if (precio_fijo != null) {
-      const errorPrecio = requerirNumeroPositivo(precio_fijo, 'precio_fijo');
-      if (errorPrecio) return res.status(400).json({ error: errorPrecio });
+    if (horas_estimadas != null) {
+      const errorHorasEstimadas = requerirNumeroPositivo(horas_estimadas, 'horas_estimadas');
+      if (errorHorasEstimadas) return res.status(400).json({ error: errorHorasEstimadas });
     }
     const proyecto = db.prepare('SELECT id FROM proyectos WHERE id = ?').get(proyecto_id);
     if (!proyecto) return res.status(400).json({ error: 'proyecto_id no existe' });
@@ -64,20 +92,10 @@ function crearRouter(db) {
 
     const info = db
       .prepare(
-        `INSERT INTO tareas (proyecto_id, nombre, tipo_cobro, tarifa_hora, precio_fijo, estado, pagado, fecha_cobro, fecha_limite)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO tareas (proyecto_id, nombre, estado, pagado, fecha_cobro, fecha_limite, horas_estimadas)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(
-        proyecto_id,
-        nombre,
-        tipo_cobro,
-        tarifa_hora != null ? aCentavos(tarifa_hora) : null,
-        precio_fijo != null ? aCentavos(precio_fijo) : null,
-        estadoFinal,
-        pagadoFinal ? 1 : 0,
-        fechaCobroFinal,
-        fecha_limite || null
-      );
+      .run(proyecto_id, nombre, estadoFinal, pagadoFinal ? 1 : 0, fechaCobroFinal, fecha_limite || null, horas_estimadas ?? null);
     const tarea = db.prepare('SELECT * FROM tareas WHERE id = ?').get(info.lastInsertRowid);
     res.status(201).json(serializarTarea(tarea));
   });
@@ -85,28 +103,20 @@ function crearRouter(db) {
   router.put('/:id', (req, res) => {
     const existing = db.prepare('SELECT * FROM tareas WHERE id = ?').get(req.params.id);
     if (!existing) return notFound(res, 'Tarea');
-    const existingDolares = serializarTarea(existing);
 
     const proyecto_id = req.body.proyecto_id ?? existing.proyecto_id;
     const nombre = req.body.nombre ?? existing.nombre;
-    const tipo_cobro = req.body.tipo_cobro ?? existing.tipo_cobro;
-    const tarifa_hora = req.body.tarifa_hora !== undefined ? req.body.tarifa_hora : existingDolares.tarifa_hora;
-    const precio_fijo = req.body.precio_fijo !== undefined ? req.body.precio_fijo : existingDolares.precio_fijo;
     const estado = req.body.estado ?? existing.estado;
     const fecha_limite = req.body.fecha_limite !== undefined ? req.body.fecha_limite : existing.fecha_limite;
+    const horas_estimadas =
+      req.body.horas_estimadas !== undefined ? req.body.horas_estimadas : existing.horas_estimadas;
     const pagado = req.body.pagado !== undefined ? req.body.pagado : !!existing.pagado;
 
-    const errorTipo = validarEnum(tipo_cobro, TIPOS_COBRO, 'tipo_cobro');
-    if (errorTipo) return res.status(400).json({ error: errorTipo });
     const errorEstado = validarEnum(estado, ESTADOS, 'estado');
     if (errorEstado) return res.status(400).json({ error: errorEstado });
-    if (tarifa_hora != null) {
-      const errorTarifa = requerirNumeroPositivo(tarifa_hora, 'tarifa_hora');
-      if (errorTarifa) return res.status(400).json({ error: errorTarifa });
-    }
-    if (precio_fijo != null) {
-      const errorPrecio = requerirNumeroPositivo(precio_fijo, 'precio_fijo');
-      if (errorPrecio) return res.status(400).json({ error: errorPrecio });
+    if (horas_estimadas != null) {
+      const errorHorasEstimadas = requerirNumeroPositivo(horas_estimadas, 'horas_estimadas');
+      if (errorHorasEstimadas) return res.status(400).json({ error: errorHorasEstimadas });
     }
     if (typeof pagado !== 'boolean') {
       return res.status(400).json({ error: 'pagado debe ser true o false' });
@@ -115,21 +125,37 @@ function crearRouter(db) {
 
     db.prepare(
       `UPDATE tareas
-       SET proyecto_id = ?, nombre = ?, tipo_cobro = ?, tarifa_hora = ?, precio_fijo = ?, estado = ?,
-           pagado = ?, fecha_cobro = ?, fecha_limite = ?, actualizado_en = CURRENT_TIMESTAMP
+       SET proyecto_id = ?, nombre = ?, estado = ?, pagado = ?, fecha_cobro = ?, fecha_limite = ?,
+           horas_estimadas = ?, actualizado_en = CURRENT_TIMESTAMP
        WHERE id = ?`
-    ).run(
-      proyecto_id,
-      nombre,
-      tipo_cobro,
-      tarifa_hora != null ? aCentavos(tarifa_hora) : null,
-      precio_fijo != null ? aCentavos(precio_fijo) : null,
-      estado,
-      pagado ? 1 : 0,
-      fechaCobroFinal,
-      fecha_limite || null,
-      req.params.id
-    );
+    ).run(proyecto_id, nombre, estado, pagado ? 1 : 0, fechaCobroFinal, fecha_limite || null, horas_estimadas ?? null, req.params.id);
+
+    // Historial de actividad: solo las dos transiciones pedidas (cambio de
+    // estado, y pasar de pendiente de cobro a pagada). fecha de
+    // 'estado_cambiado' es hoy (no hay fecha historica de cuando cambio el
+    // estado); fecha de 'pagado' es la fecha de cobro.
+    const clienteId = clienteIdDeProyecto(db, proyecto_id);
+    if (estado !== existing.estado) {
+      registrarActividad(db, {
+        cliente_id: clienteId,
+        proyecto_id,
+        tarea_id: req.params.id,
+        tipo: 'estado_cambiado',
+        descripcion: `Tarea "${nombre}" pasó a ${estado}`,
+        fecha: new Date().toISOString().slice(0, 10),
+      });
+    }
+    if (pagado && !existing.pagado) {
+      registrarActividad(db, {
+        cliente_id: clienteId,
+        proyecto_id,
+        tarea_id: req.params.id,
+        tipo: 'pagado',
+        descripcion: `Tarea "${nombre}" marcada como pagada`,
+        fecha: fechaCobroFinal,
+      });
+    }
+
     const tarea = db.prepare('SELECT * FROM tareas WHERE id = ?').get(req.params.id);
     res.json(serializarTarea(tarea));
   });
@@ -156,7 +182,7 @@ function crearRouter(db) {
   });
 
   router.post('/:id/subregistros', (req, res) => {
-    const tarea = db.prepare('SELECT id FROM tareas WHERE id = ?').get(req.params.id);
+    const tarea = db.prepare('SELECT * FROM tareas WHERE id = ?').get(req.params.id);
     if (!tarea) return notFound(res, 'Tarea');
 
     const { horas, origen, fecha } = req.body;
@@ -171,6 +197,15 @@ function crearRouter(db) {
       .prepare('INSERT INTO subregistros_tiempo (tarea_id, horas, fecha, origen) VALUES (?, ?, ?, ?)')
       .run(req.params.id, horas, fechaFinal, origenFinal);
     recomputarHorasTarea(db, req.params.id);
+
+    registrarActividad(db, {
+      cliente_id: clienteIdDeProyecto(db, tarea.proyecto_id),
+      proyecto_id: tarea.proyecto_id,
+      tarea_id: req.params.id,
+      tipo: 'tiempo_registrado',
+      descripcion: `Se registraron ${horas}h en "${tarea.nombre}"`,
+      fecha: fechaFinal,
+    });
 
     const subregistro = db.prepare('SELECT * FROM subregistros_tiempo WHERE id = ?').get(info.lastInsertRowid);
     res.status(201).json(subregistro);

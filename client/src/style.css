@@ -424,7 +424,7 @@ body {
 
 .grid-clientes {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 1rem;
 }
 
@@ -499,91 +499,22 @@ body {
   color: var(--green);
 }
 
-/* ---------- Proyecto cards ---------- */
-
-.grid-proyectos {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 1rem;
-  align-items: start;
-}
-
-.proyecto-card {
-  background: var(--surface);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-lg);
-  padding: 1.25rem;
-  box-shadow: var(--shadow-card);
-  transition: border-color 0.15s ease;
-}
-
-.proyecto-card.abierto {
-  grid-column: 1 / -1;
-  border-color: var(--text-faint);
-}
-
-.proyecto-card-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 0.75rem;
-}
-
-.proyecto-card h3 {
-  margin: 0 0 0.3rem;
-  font-size: 1.02rem;
-}
-
 .proyecto-meta {
   color: var(--text-muted);
   font-size: 0.82rem;
 }
 
-.proyecto-card-actions {
-  display: flex;
-  gap: 0.4rem;
-  flex-shrink: 0;
+.proyecto-meta a {
+  color: var(--text-soft);
+  text-decoration: none;
 }
 
-/* mini profitability strip (también usada como fila de KPIs del proyecto) */
-
-.rent-mini {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  margin-top: 1rem;
+.proyecto-meta a:hover {
+  color: var(--accent-2);
 }
 
-.rent-mini-item {
-  flex: 1 1 auto;
-  min-width: 70px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 0.6rem 0.75rem;
-}
-
-.rent-mini-item .label {
-  display: block;
-  font-size: 0.68rem;
-  color: var(--text-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  margin-bottom: 0.2rem;
-}
-
-.rent-mini-item .value {
-  font-family: var(--font-mono);
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-
-.rent-mini-item.margen .value.positivo {
-  color: var(--green);
-}
-
-.rent-mini-item.margen .value.negativo {
-  color: var(--red);
+.seccion-titulo {
+  margin-bottom: 16px;
 }
 
 .proyecto-footer {
@@ -672,35 +603,97 @@ body {
   margin-top: 10px;
 }
 
-/* ---------- Timer ---------- */
+/* ---------- Timer ("Live timer" de Tiempos.dc.html) ---------- */
 
-.timer-widget {
+.timer-live {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 0.6rem 0.75rem;
-  margin-bottom: 0.9rem;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+  margin-bottom: 24px;
 }
 
-.timer-display {
-  font-family: var(--font-mono);
-  font-size: 1.15rem;
+.timer-live-activo {
+  border-color: rgba(180, 85, 240, 0.3);
+  box-shadow: 0 0 24px rgba(180, 85, 240, 0.08);
+}
+
+.timer-live-info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.timer-live-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+  flex-shrink: 0;
+}
+
+.timer-live-dot-inactivo {
+  background: var(--text-faint);
+  box-shadow: none;
+}
+
+.timer-live-title {
+  font-size: 0.85rem;
   font-weight: 600;
-  letter-spacing: 0.03em;
-  color: var(--text);
-  flex: 1;
 }
 
-.timer-display.muted {
+.timer-live-sub {
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+
+.timer-live-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-shrink: 0;
+}
+
+.timer-live-time {
+  font-family: var(--font-mono);
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--accent-2);
+}
+
+.timer-live-time-muted {
   color: var(--text-faint);
 }
 
-.timer-widget .btn[disabled] {
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.btn-ghost[disabled] {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.tabla-bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.1rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
 }
 
 /* ---------- Vista de detalle de proyecto (pestañas + filtro) ---------- */
@@ -1325,4 +1318,90 @@ input::placeholder {
 .chart-bar-label {
   font-size: 0.68rem;
   color: var(--text-faint);
+}
+
+/* ---------- Layout de 2 columnas para detalle de cliente/proyecto ---------- */
+
+.detalle-grid-2col {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .detalle-grid-2col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Mini barra de progreso dentro de una celda de tabla ---------- */
+
+.progreso-mini {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progreso-mini .budget-track {
+  width: 56px;
+  height: 6px;
+  flex-shrink: 0;
+}
+
+.progreso-mini span {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* ---------- Datos de la empresa (panel del cliente) ---------- */
+
+.company-info-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.company-info-label {
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+
+.company-info-value {
+  font-size: 0.85rem;
+  color: var(--text);
+  margin-top: 3px;
+}
+
+.cliente-contacto-linea {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+/* ---------- Historial de actividad (cliente y proyecto) ---------- */
+
+.actividad-item {
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+
+.actividad-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+
+.actividad-dot-accent {
+  background: var(--accent);
+}
+
+.actividad-dot-green {
+  background: var(--green);
+}
+
+.actividad-dot-gray {
+  background: var(--text-faint);
 }

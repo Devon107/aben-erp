@@ -89,11 +89,7 @@ export function TimerProvider({ children }) {
       if (!tareaId) {
         const nueva = await api('/api/tareas', {
           method: 'POST',
-          body: JSON.stringify({
-            proyecto_id: proyectoId,
-            nombre: eleccion.nueva.nombre,
-            tipo_cobro: eleccion.nueva.tipo_cobro,
-          }),
+          body: JSON.stringify({ proyecto_id: proyectoId, nombre: eleccion.nueva.nombre }),
         });
         tareaId = nueva.id;
       }

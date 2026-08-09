@@ -8,14 +8,14 @@ const TareaPickerContext = createContext(null);
 // TimerContext cuando se detiene el cronómetro "suelto" (sin tarea
 // pre-seleccionada): en vez de pedir una descripción libre que crea una
 // entrada nueva, se elige una tarea existente del proyecto o se crea una
-// nueva ahí mismo (nombre + tipo de cobro).
+// nueva ahí mismo (solo el nombre — el precio vive en el proyecto, no en la
+// tarea).
 export function TareaPickerProvider({ children }) {
   const [proyectoId, setProyectoId] = useState(null);
   const [tareas, setTareas] = useState(null);
   const [seleccionId, setSeleccionId] = useState('');
   const [modoNueva, setModoNueva] = useState(false);
   const [nombreNueva, setNombreNueva] = useState('');
-  const [tipoCobroNueva, setTipoCobroNueva] = useState('hora');
   const resolveRef = useRef(null);
 
   const pedirTarea = useCallback((pid) => {
@@ -23,7 +23,6 @@ export function TareaPickerProvider({ children }) {
     setSeleccionId('');
     setModoNueva(false);
     setNombreNueva('');
-    setTipoCobroNueva('hora');
     setTareas(null);
     api(`/api/tareas?proyecto_id=${pid}`)
       .then(setTareas)
@@ -43,7 +42,7 @@ export function TareaPickerProvider({ children }) {
     e.preventDefault();
     if (modoNueva) {
       if (!nombreNueva.trim()) return;
-      terminar({ nueva: { nombre: nombreNueva.trim(), tipo_cobro: tipoCobroNueva } });
+      terminar({ nueva: { nombre: nombreNueva.trim() } });
     } else {
       if (!seleccionId) return;
       terminar({ tareaId: Number(seleccionId) });
@@ -96,13 +95,6 @@ export function TareaPickerProvider({ children }) {
                 Nombre de la tarea
                 {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
                 <input type="text" autoFocus value={nombreNueva} onChange={(e) => setNombreNueva(e.target.value)} />
-              </label>
-              <label>
-                Tipo de cobro
-                <select value={tipoCobroNueva} onChange={(e) => setTipoCobroNueva(e.target.value)}>
-                  <option value="hora">Por hora</option>
-                  <option value="fijo">Precio fijo</option>
-                </select>
               </label>
               <button type="button" className="btn-link" onClick={() => setModoNueva(false)}>
                 &larr; Elegir una existente

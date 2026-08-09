@@ -116,7 +116,7 @@ describe('TimerContext', () => {
     await waitFor(() => expect(screen.getByTestId('active')).toHaveTextContent('ninguno'));
     expect(global.fetch).toHaveBeenCalledWith(
       '/api/tareas',
-      expect.objectContaining({ method: 'POST', body: JSON.stringify({ proyecto_id: 1, nombre: 'Tarea nueva', tipo_cobro: 'hora' }) })
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ proyecto_id: 1, nombre: 'Tarea nueva' }) })
     );
     expect(global.fetch).toHaveBeenCalledWith('/api/tareas/7/subregistros', expect.objectContaining({ method: 'POST' }));
   });

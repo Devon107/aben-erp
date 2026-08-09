@@ -4,28 +4,25 @@ import { isoDateLocal } from '../../lib/format.js';
 import { useToast } from '../../components/Toast.jsx';
 import Modal from '../../components/Modal.jsx';
 
-// Crea o edita una tarea: es la unidad de cobro dentro de un proyecto (el
-// tipo de cobro/tarifa vive acá, no en el proyecto). No depende de ningún
-// cronómetro — se puede crear en cualquier momento y trackear tiempo después.
+// Crea o edita una tarea. El precio (tipo de cobro/tarifa) vive en el
+// proyecto, no acá — una tarea solo tiene nombre/estado/fecha límite/horas
+// estimadas y su propio estado de pago. No depende de ningún cronómetro — se
+// puede crear en cualquier momento y trackear tiempo después.
 export default function TareaModal({ open, tarea, proyectoId, onClose, onSaved }) {
   const showToast = useToast();
   const [nombre, setNombre] = useState('');
-  const [tipoCobro, setTipoCobro] = useState('hora');
-  const [tarifaHora, setTarifaHora] = useState('');
-  const [precioFijo, setPrecioFijo] = useState('');
   const [estado, setEstado] = useState('pendiente');
   const [fechaLimite, setFechaLimite] = useState('');
+  const [horasEstimadas, setHorasEstimadas] = useState('');
   const [pagado, setPagado] = useState(false);
   const [fechaCobro, setFechaCobro] = useState('');
 
   useEffect(() => {
     if (open) {
       setNombre(tarea?.nombre ?? '');
-      setTipoCobro(tarea?.tipo_cobro ?? 'hora');
-      setTarifaHora(tarea?.tarifa_hora ?? '');
-      setPrecioFijo(tarea?.precio_fijo ?? '');
       setEstado(tarea?.estado ?? 'pendiente');
       setFechaLimite(tarea?.fecha_limite ?? '');
+      setHorasEstimadas(tarea?.horas_estimadas ?? '');
       setPagado(tarea?.pagado ?? false);
       setFechaCobro(tarea?.fecha_cobro ?? isoDateLocal(new Date()));
     }
@@ -36,11 +33,9 @@ export default function TareaModal({ open, tarea, proyectoId, onClose, onSaved }
     const payload = {
       proyecto_id: proyectoId,
       nombre,
-      tipo_cobro: tipoCobro,
-      tarifa_hora: tarifaHora !== '' ? Number(tarifaHora) : null,
-      precio_fijo: precioFijo !== '' ? Number(precioFijo) : null,
       estado,
       fecha_limite: fechaLimite || null,
+      horas_estimadas: horasEstimadas !== '' ? Number(horasEstimadas) : null,
       pagado,
       fecha_cobro: pagado ? fechaCobro : null,
     };
@@ -73,24 +68,16 @@ export default function TareaModal({ open, tarea, proyectoId, onClose, onSaved }
           <input type="text" required placeholder="Nombre de la tarea" value={nombre} onChange={(e) => setNombre(e.target.value)} />
         </label>
         <label>
-          Tipo de cobro
-          <select value={tipoCobro} onChange={(e) => setTipoCobro(e.target.value)} required>
-            <option value="hora">Por hora</option>
-            <option value="fijo">Precio fijo</option>
-          </select>
+          Horas estimadas (opcional)
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="0.00"
+            value={horasEstimadas}
+            onChange={(e) => setHorasEstimadas(e.target.value)}
+          />
         </label>
-        {tipoCobro === 'hora' && (
-          <label>
-            Tarifa por hora
-            <input type="number" step="0.01" min="0" placeholder="0.00" value={tarifaHora} onChange={(e) => setTarifaHora(e.target.value)} />
-          </label>
-        )}
-        {tipoCobro === 'fijo' && (
-          <label>
-            Precio fijo
-            <input type="number" step="0.01" min="0" placeholder="0.00" value={precioFijo} onChange={(e) => setPrecioFijo(e.target.value)} />
-          </label>
-        )}
         <label>
           Estado
           <select value={estado} onChange={(e) => setEstado(e.target.value)}>

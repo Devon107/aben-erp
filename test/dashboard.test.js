@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { crearAppDePrueba, conServidor, crearProyecto, crearTarea, crearSubregistro } = require('./helpers');
+const { crearAppDePrueba, conServidor, crearCliente, crearProyecto, crearTarea, crearSubregistro } = require('./helpers');
 
 test('GET /api/dashboard exige desde y hasta', async () => {
   const { app } = crearAppDePrueba();
@@ -13,30 +13,26 @@ test('GET /api/dashboard exige desde y hasta', async () => {
 test('GET /api/dashboard calcula horas, ingreso (solo cobrado), gastos y margen por cliente dentro del rango', async () => {
   const { app, db } = crearAppDePrueba();
 
-  const clienteId = db
-    .prepare("INSERT INTO clientes (nombre, modo_facturacion) VALUES ('Cliente Test', 'hora')")
-    .run().lastInsertRowid;
-  const proyectoId = db
-    .prepare("INSERT INTO proyectos (cliente_id, nombre, estado) VALUES (?, 'Proyecto Test', 'activo')")
-    .run(clienteId).lastInsertRowid;
+  const clienteId = crearCliente(db, { nombre: 'Cliente Test' });
+  const proyectoId = crearProyecto(db, { clienteId, nombre: 'Proyecto Test', tipo_cobro: 'hora', tarifa_hora: 5000 });
 
   // tarea pagada: 6h * $50/h = $300 de ingreso, dentro del rango.
-  const tareaPagadaId = crearTarea(db, proyectoId, { nombre: 'Pagada', tipo_cobro: 'hora', tarifa_hora: 5000, pagado: 1 });
+  const tareaPagadaId = crearTarea(db, proyectoId, { nombre: 'Pagada', pagado: 1 });
   crearSubregistro(db, tareaPagadaId, 6, '2026-07-10');
   db.prepare('UPDATE tareas SET horas = 6 WHERE id = ?').run(tareaPagadaId);
 
   // tarea pendiente: 4h * $50/h = $200 de pendiente, dentro del rango.
-  const tareaPendienteId = crearTarea(db, proyectoId, { nombre: 'Pendiente', tipo_cobro: 'hora', tarifa_hora: 5000, pagado: 0 });
+  const tareaPendienteId = crearTarea(db, proyectoId, { nombre: 'Pendiente', pagado: 0 });
   crearSubregistro(db, tareaPendienteId, 4, '2026-07-12');
   db.prepare('UPDATE tareas SET horas = 4 WHERE id = ?').run(tareaPendienteId);
 
   // Fuera de rango: no debe contarse en el resultado (ni horas ni ingreso).
-  const tareaFueraId = crearTarea(db, proyectoId, { nombre: 'Fuera de rango', tipo_cobro: 'hora', tarifa_hora: 5000, pagado: 1 });
+  const tareaFueraId = crearTarea(db, proyectoId, { nombre: 'Fuera de rango', pagado: 1 });
   crearSubregistro(db, tareaFueraId, 5, '2026-06-01');
   db.prepare('UPDATE tareas SET horas = 5 WHERE id = ?').run(tareaFueraId);
 
-  db.prepare('INSERT INTO gastos (proyecto_id, descripcion, monto, fecha) VALUES (?, ?, ?, ?)').run(
-    proyectoId,
+  db.prepare('INSERT INTO gastos (cliente_id, descripcion, monto, fecha) VALUES (?, ?, ?, ?)').run(
+    clienteId,
     'Gasto test',
     10000, // $100.00 en centavos
     '2026-07-15'
@@ -61,22 +57,18 @@ test('GET /api/dashboard calcula horas, ingreso (solo cobrado), gastos y margen 
   });
 });
 
-test('GET /api/dashboard: tarea de precio fijo solo aporta ingreso si esta marcada pagada', async () => {
+test('GET /api/dashboard: proyecto de precio fijo reparte el ingreso proporcional a las tareas pagadas', async () => {
   const { app, db } = crearAppDePrueba();
 
-  const clienteId = db
-    .prepare("INSERT INTO clientes (nombre, modo_facturacion) VALUES ('Cliente Fijo', 'proyecto')")
-    .run().lastInsertRowid;
-  const proyectoId = db
-    .prepare("INSERT INTO proyectos (cliente_id, nombre, estado) VALUES (?, 'Proyecto Fijo', 'activo')")
-    .run(clienteId).lastInsertRowid;
-  const tareaId = crearTarea(db, proyectoId, {
-    nombre: 'Entrega fija',
+  const clienteId = crearCliente(db, { nombre: 'Cliente Fijo', modo_facturacion: 'proyecto' });
+  const proyectoId = crearProyecto(db, {
+    clienteId,
+    nombre: 'Proyecto Fijo',
     tipo_cobro: 'fijo',
-    precio_fijo: 100000, // $1000.00
     tarifa_hora: null,
-    pagado: 0,
+    precio_fijo: 100000, // $1000.00
   });
+  const tareaId = crearTarea(db, proyectoId, { nombre: 'Entrega fija', pagado: 0 });
   crearSubregistro(db, tareaId, 3, '2026-07-10');
   db.prepare('UPDATE tareas SET horas = 3 WHERE id = ?').run(tareaId);
 
@@ -90,6 +82,7 @@ test('GET /api/dashboard: tarea de precio fijo solo aporta ingreso si esta marca
 
     const res2 = await fetch(`${base}/api/dashboard?desde=2026-07-01&hasta=2026-07-31`);
     const body2 = await res2.json();
+    // unica tarea del proyecto -> se cobra el precio_fijo completo
     assert.equal(body2.clientes[0].ingreso_total, 1000);
     assert.equal(body2.clientes[0].ingreso_pendiente, 0);
   });
@@ -97,9 +90,9 @@ test('GET /api/dashboard: tarea de precio fijo solo aporta ingreso si esta marca
 
 test('GET /api/dashboard: tareasPendientes lista tareas no pagadas de cualquier proyecto', async () => {
   const { app, db } = crearAppDePrueba();
-  const proyectoId = crearProyecto(db);
-  crearTarea(db, proyectoId, { nombre: 'Sin cobrar', tipo_cobro: 'fijo', precio_fijo: 8000, tarifa_hora: null, pagado: 0 });
-  crearTarea(db, proyectoId, { nombre: 'Ya cobrada', tipo_cobro: 'fijo', precio_fijo: 5000, tarifa_hora: null, pagado: 1 });
+  const proyectoId = crearProyecto(db, { tipo_cobro: 'fijo', tarifa_hora: null, precio_fijo: 13000 });
+  crearTarea(db, proyectoId, { nombre: 'Sin cobrar', pagado: 0 });
+  crearTarea(db, proyectoId, { nombre: 'Ya cobrada', pagado: 1 });
 
   await conServidor(app, async (base) => {
     const res = await fetch(`${base}/api/dashboard?desde=2026-01-01&hasta=2026-12-31`);

@@ -29,6 +29,27 @@ test('POST /api/tareas/:id/subregistros agrega tiempo y recalcula el total (con 
   });
 });
 
+test('POST /api/tareas/:id/subregistros registra una actividad "tiempo_registrado" con la fecha del subregistro', async () => {
+  const { app, db } = crearAppDePrueba();
+  const proyectoId = crearProyecto(db);
+  const tareaId = crearTarea(db, proyectoId, { nombre: 'Diseño UI' });
+
+  await conServidor(app, async (base) => {
+    const res = await fetch(`${base}/api/tareas/${tareaId}/subregistros`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ horas: 2.5, fecha: '2026-07-10' }),
+    });
+    assert.equal(res.status, 201);
+  });
+
+  const actividades = db.prepare('SELECT * FROM actividades WHERE tarea_id = ?').all(tareaId);
+  assert.equal(actividades.length, 1);
+  assert.equal(actividades[0].tipo, 'tiempo_registrado');
+  assert.equal(actividades[0].fecha, '2026-07-10');
+  assert.match(actividades[0].descripcion, /Diseño UI/);
+});
+
 test('POST /api/tareas/:id/subregistros usa la fecha de hoy si no se manda', async () => {
   const { app, db } = crearAppDePrueba();
   const proyectoId = crearProyecto(db);
@@ -213,8 +234,6 @@ test('migrarEntradasATareas migra entradas_tiempo legacy a tareas, preservando p
 
   const tareaPagada = db.prepare('SELECT * FROM tareas WHERE id = ?').get(entradaPagadaId);
   assert.equal(tareaPagada.nombre, 'Sesion A');
-  assert.equal(tareaPagada.tipo_cobro, 'hora');
-  assert.equal(tareaPagada.tarifa_hora, 5000);
   assert.equal(tareaPagada.pagado, 1);
   assert.equal(tareaPagada.estado, 'completada');
   assert.equal(tareaPagada.horas, 2);
@@ -240,8 +259,51 @@ test('migrarEntradasATareas migra entradas_tiempo legacy a tareas, preservando p
     .map((r) => r.name);
   assert.ok(!tablas.includes('entradas_tiempo'));
 
+  // El precio (tipo_cobro/tarifa_hora) se preserva en el proyecto (nunca vivio
+  // en `tareas` en este flujo legacy); lo que se quita de proyectos es el
+  // `pagado` viejo, que ahora vive en cada tarea.
+  const proyecto = db.prepare('SELECT * FROM proyectos WHERE id = ?').get(proyectoId);
+  assert.equal(proyecto.tipo_cobro, 'hora');
+  assert.equal(proyecto.tarifa_hora, 5000);
   const proyectoCols = db.prepare('PRAGMA table_info(proyectos)').all().map((c) => c.name);
-  assert.ok(!proyectoCols.includes('tipo_cobro'));
+  assert.ok(!proyectoCols.includes('pagado'));
 
   assert.deepEqual(db.pragma('foreign_key_check'), []);
+});
+
+// Reproduce un caso visto en la base real: subregistros_tiempo ya tiene
+// `tarea_id` (la migracion ya se corrio antes), pero entradas_tiempo
+// reaparece vacia (p.ej. por una version vieja de schema.sql que todavia la
+// definia con CREATE TABLE IF NOT EXISTS). Sin el guard extra, la migracion
+// intentaria referenciar `entrada_tiempo_id` sobre subregistros_tiempo, que
+// ya no existe, y initDb() explotaria.
+test('migrarEntradasATareas no rompe si entradas_tiempo reaparece vacia sobre una base ya migrada', () => {
+  const { db } = crearAppDePrueba();
+  const proyectoId = crearProyecto(db);
+  const tareaId = crearTarea(db, proyectoId);
+
+  db.exec(`
+    CREATE TABLE entradas_tiempo (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      proyecto_id INTEGER NOT NULL,
+      fecha TEXT NOT NULL,
+      horas REAL NOT NULL DEFAULT 0,
+      descripcion TEXT,
+      origen TEXT NOT NULL DEFAULT 'manual',
+      pagado INTEGER NOT NULL DEFAULT 0,
+      creado_en TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      actualizado_en TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  assert.doesNotThrow(() => initDb(db.name));
+
+  const tablas = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+    .all()
+    .map((r) => r.name);
+  assert.ok(!tablas.includes('entradas_tiempo'));
+  // la tarea/subregistro previos a la "reaparicion" de entradas_tiempo no se tocan
+  const tarea = db.prepare('SELECT * FROM tareas WHERE id = ?').get(tareaId);
+  assert.equal(tarea.nombre, 'T');
 });

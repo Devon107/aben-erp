@@ -8,10 +8,10 @@ import { ProyectoDetalleProvider } from '../proyectos/ProyectoDetalleContext.jsx
 import TareasTable from './TareasTable.jsx';
 
 const TAREAS = [
-  { id: 1, nombre: 'Reunion cliente', tipo_cobro: 'hora', tarifa_hora: 50, precio_fijo: null, horas: 1, estado: 'completada', pagado: true, fecha_limite: null },
-  { id: 2, nombre: 'Desarrollo backend', tipo_cobro: 'hora', tarifa_hora: 50, precio_fijo: null, horas: 2, estado: 'en_curso', pagado: false, fecha_limite: null },
-  { id: 3, nombre: 'Reunion equipo', tipo_cobro: 'fijo', tarifa_hora: null, precio_fijo: 100, horas: 0.5, estado: 'completada', pagado: true, fecha_limite: null },
-  { id: 4, nombre: 'Reunion ventas', tipo_cobro: 'hora', tarifa_hora: 50, precio_fijo: null, horas: 1.5, estado: 'pendiente', pagado: false, fecha_limite: null },
+  { id: 1, nombre: 'Reunion cliente', horas: 1, horas_estimadas: null, estado: 'completada', pagado: true, fecha_limite: null },
+  { id: 2, nombre: 'Desarrollo backend', horas: 2, horas_estimadas: null, estado: 'en_curso', pagado: false, fecha_limite: null },
+  { id: 3, nombre: 'Reunion equipo', horas: 0.5, horas_estimadas: 1, estado: 'completada', pagado: true, fecha_limite: null },
+  { id: 4, nombre: 'Reunion ventas', horas: 1.5, horas_estimadas: null, estado: 'pendiente', pagado: false, fecha_limite: null },
 ];
 
 function renderTabla() {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api.js';
-import { fechaCorta, horasTexto, money } from '../../lib/format.js';
+import { fechaCorta, horasTexto } from '../../lib/format.js';
 import { useToast } from '../../components/Toast.jsx';
 import { useConfirm } from '../../components/ConfirmModal.jsx';
 import { useProyectoDetalle } from '../proyectos/ProyectoDetalleContext.jsx';
@@ -9,10 +9,12 @@ import TareaModal from './TareaModal.jsx';
 
 const ESTADO_LABEL = { pendiente: 'Pendiente', en_curso: 'En curso', completada: 'Completada' };
 
-// Tabla de tareas de un proyecto: cada tarea es su propia unidad de cobro
-// (tipo/tarifa) y se crea explícitamente con "+ Nueva tarea", sin depender
-// de iniciar ningún cronómetro. El cronómetro por fila permite trackear
-// tiempo para una tarea ya creada.
+// Tabla de tareas de un proyecto. El precio (tipo de cobro/tarifa) vive en
+// el proyecto, no acá — esta tabla solo muestra/edita nombre, horas
+// (trabajadas y estimadas), estado y pago. "+ Nueva tarea" vive en el header
+// del proyecto (ProyectoDetalleView), no acá: este componente solo abre su
+// propio modal para EDITAR una fila existente. El cronómetro por fila
+// permite trackear tiempo para una tarea ya creada.
 export default function TareasTable({ proyectoId, onVerTarea }) {
   const showToast = useToast();
   const confirmar = useConfirm();
@@ -22,6 +24,7 @@ export default function TareasTable({ proyectoId, onVerTarea }) {
   const [estadoPago, setEstadoPago] = useState('todos'); // 'todos' | 'pagado' | 'pendiente'
   const [modalAbierto, setModalAbierto] = useState(false);
   const [tareaEditando, setTareaEditando] = useState(null);
+  const [seleccionadas, setSeleccionadas] = useState(() => new Set());
 
   async function cargarTareas() {
     try {
@@ -41,11 +44,6 @@ export default function TareasTable({ proyectoId, onVerTarea }) {
   const tareasFiltradas = tareas
     ?.filter((t) => estadoPago === 'todos' || (estadoPago === 'pagado' ? t.pagado : !t.pagado))
     .filter((t) => !busquedaNormalizada || t.nombre.toLowerCase().includes(busquedaNormalizada));
-
-  function abrirNueva() {
-    setTareaEditando(null);
-    setModalAbierto(true);
-  }
 
   function abrirEditar(tarea) {
     setTareaEditando(tarea);
@@ -73,6 +71,26 @@ export default function TareasTable({ proyectoId, onVerTarea }) {
     }
   }
 
+  function alternarSeleccion(tareaId) {
+    setSeleccionadas((prev) => {
+      const siguiente = new Set(prev);
+      if (siguiente.has(tareaId)) siguiente.delete(tareaId);
+      else siguiente.add(tareaId);
+      return siguiente;
+    });
+  }
+
+  async function marcarSeleccionadasComoPagadas() {
+    try {
+      await api('/api/tareas/marcar-pagadas', { method: 'PUT', body: JSON.stringify({ ids: [...seleccionadas] }) });
+      showToast(`${seleccionadas.size} tarea(s) marcadas como pagadas`);
+      setSeleccionadas(new Set());
+      marcarCambio();
+    } catch (err) {
+      showToast(err.message, true);
+    }
+  }
+
   return (
     <div className="reporte-panel">
       <div className="filtros-tabla">
@@ -87,18 +105,25 @@ export default function TareasTable({ proyectoId, onVerTarea }) {
           <option value="pagado">Pagadas</option>
           <option value="pendiente">Pendientes</option>
         </select>
-        <button type="button" className="btn btn-primary btn-sm" onClick={abrirNueva}>
-          + Nueva tarea
-        </button>
       </div>
+
+      {seleccionadas.size > 0 && (
+        <div className="tabla-bulk-actions">
+          <span>{seleccionadas.size} seleccionada(s)</span>
+          <button type="button" className="btn btn-primary btn-sm" onClick={marcarSeleccionadasComoPagadas}>
+            Marcar como pagadas
+          </button>
+        </div>
+      )}
 
       <div className="tabla-wrap tabla-wrap-grande">
         <table className="tabla-entradas">
           <thead>
             <tr>
+              <th></th>
               <th>Nombre</th>
-              <th>Tipo de cobro</th>
               <th>Horas</th>
+              <th>Horas estimadas</th>
               <th>Estado</th>
               <th>Pago</th>
               <th>Fecha límite</th>
@@ -108,34 +133,43 @@ export default function TareasTable({ proyectoId, onVerTarea }) {
           <tbody>
             {tareas === null && (
               <tr>
-                <td colSpan="7" className="mini-empty">
+                <td colSpan="8" className="mini-empty">
                   Cargando...
                 </td>
               </tr>
             )}
             {tareas !== null && tareas.length === 0 && (
               <tr>
-                <td colSpan="7" className="mini-empty">
+                <td colSpan="8" className="mini-empty">
                   Sin tareas todavía. Creá la primera con "+ Nueva tarea".
                 </td>
               </tr>
             )}
             {tareas !== null && tareas.length > 0 && tareasFiltradas.length === 0 && (
               <tr>
-                <td colSpan="7" className="mini-empty">
+                <td colSpan="8" className="mini-empty">
                   Sin resultados para los filtros seleccionados.
                 </td>
               </tr>
             )}
             {tareasFiltradas?.map((t) => (
               <tr key={t.id}>
+                <td>
+                  <input
+                    type="checkbox"
+                    disabled={t.pagado}
+                    checked={seleccionadas.has(t.id)}
+                    onChange={() => alternarSeleccion(t.id)}
+                    aria-label={`Seleccionar ${t.nombre}`}
+                  />
+                </td>
                 <td className="col-descripcion">
                   <button type="button" className="tabla-link" onClick={() => onVerTarea(t.id)}>
                     {t.nombre}
                   </button>
                 </td>
-                <td>{t.tipo_cobro === 'hora' ? `${money(t.tarifa_hora)} / h` : `${money(t.precio_fijo)} fijo`}</td>
                 <td>{horasTexto(t.horas)} h</td>
+                <td>{t.horas_estimadas != null ? `${horasTexto(t.horas_estimadas)} h` : '—'}</td>
                 <td>
                   <span className={`badge badge-tarea-${t.estado}`}>{ESTADO_LABEL[t.estado]}</span>
                 </td>

@@ -37,6 +37,18 @@ export function fechaHoraCorta(sqliteDatetime) {
   return `${dia} ${MESES_CORTOS[d.getMonth()]} ${hora}:${min}`;
 }
 
+// Solo la hora (HH:MM local), para el subtítulo "iniciado {hora}" del
+// cronómetro — a diferencia de fechaHoraCorta, la entrada ya es un ISO
+// completo con offset (activeTimer.startTime = new Date().toISOString()),
+// no un datetime de SQLite sin zona.
+export function horaCorta(isoString) {
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return '';
+  const hora = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${hora}:${min}`;
+}
+
 export function isoDateLocal(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');

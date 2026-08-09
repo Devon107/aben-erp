@@ -21,44 +21,40 @@ async function conServidor(app, fn) {
   }
 }
 
-function crearProyecto(db) {
-  const clienteId = db
-    .prepare("INSERT INTO clientes (nombre, modo_facturacion) VALUES ('C', 'hora')")
-    .run().lastInsertRowid;
-  return db.prepare("INSERT INTO proyectos (cliente_id, nombre, estado) VALUES (?, 'P', 'activo')").run(clienteId)
-    .lastInsertRowid;
+function crearCliente(db, overrides = {}) {
+  const datos = { nombre: 'C', modo_facturacion: 'hora', ...overrides };
+  return db
+    .prepare('INSERT INTO clientes (nombre, modo_facturacion) VALUES (?, ?)')
+    .run(datos.nombre, datos.modo_facturacion).lastInsertRowid;
 }
 
-// El tipo de cobro/tarifa vive por tarea (no por proyecto): cada test que
-// necesite una tarea concreta puede pisar cualquiera de estos defaults.
+// El tipo de cobro/tarifa vive por proyecto (no por tarea): cada test que
+// necesite un proyecto concreto puede pisar cualquiera de estos defaults.
+function crearProyecto(db, overrides = {}) {
+  const clienteId = overrides.clienteId ?? crearCliente(db);
+  const datos = { nombre: 'P', estado: 'activo', tipo_cobro: 'hora', tarifa_hora: 1000, precio_fijo: null, ...overrides };
+  return db
+    .prepare('INSERT INTO proyectos (cliente_id, nombre, estado, tipo_cobro, tarifa_hora, precio_fijo) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(clienteId, datos.nombre, datos.estado, datos.tipo_cobro, datos.tarifa_hora, datos.precio_fijo).lastInsertRowid;
+}
+
 function crearTarea(db, proyectoId, overrides = {}) {
   const datos = {
     nombre: 'T',
-    tipo_cobro: 'hora',
-    tarifa_hora: 1000,
-    precio_fijo: null,
     estado: 'pendiente',
     pagado: 0,
     fecha_cobro: null,
     fecha_limite: null,
+    horas_estimadas: null,
     ...overrides,
   };
   return db
     .prepare(
-      `INSERT INTO tareas (proyecto_id, nombre, tipo_cobro, tarifa_hora, precio_fijo, estado, pagado, fecha_cobro, fecha_limite)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO tareas (proyecto_id, nombre, estado, pagado, fecha_cobro, fecha_limite, horas_estimadas)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(
-      proyectoId,
-      datos.nombre,
-      datos.tipo_cobro,
-      datos.tarifa_hora,
-      datos.precio_fijo,
-      datos.estado,
-      datos.pagado,
-      datos.fecha_cobro,
-      datos.fecha_limite
-    ).lastInsertRowid;
+    .run(proyectoId, datos.nombre, datos.estado, datos.pagado, datos.fecha_cobro, datos.fecha_limite, datos.horas_estimadas)
+    .lastInsertRowid;
 }
 
 function crearSubregistro(db, tareaId, horas, fecha, origen = 'manual') {
@@ -67,4 +63,4 @@ function crearSubregistro(db, tareaId, horas, fecha, origen = 'manual') {
     .run(tareaId, horas, fecha, origen).lastInsertRowid;
 }
 
-module.exports = { crearAppDePrueba, conServidor, crearProyecto, crearTarea, crearSubregistro };
+module.exports = { crearAppDePrueba, conServidor, crearCliente, crearProyecto, crearTarea, crearSubregistro };

@@ -4,8 +4,9 @@ import { fechaCorta, isoDateLocal, money } from '../../lib/format.js';
 import { useToast } from '../../components/Toast.jsx';
 import { useConfirm } from '../../components/ConfirmModal.jsx';
 
-// rango === null significa sin filtro (se muestra todo el historial).
-export default function GastosList({ proyectoId, rango, onCambio }) {
+// rango === null significa sin filtro (se muestra todo el historial). Los
+// gastos son del cliente (no de un proyecto puntual) — ver ClienteGastosView.
+export default function GastosList({ clienteId, rango, onCambio }) {
   const showToast = useToast();
   const confirmar = useConfirm();
   const [gastos, setGastos] = useState(null); // null = cargando
@@ -16,7 +17,7 @@ export default function GastosList({ proyectoId, rango, onCambio }) {
 
   async function cargarGastos() {
     try {
-      const data = await api(`/api/gastos?proyecto_id=${proyectoId}`);
+      const data = await api(`/api/gastos?cliente_id=${clienteId}`);
       setGastos(data);
     } catch (err) {
       showToast(err.message, true);
@@ -26,7 +27,7 @@ export default function GastosList({ proyectoId, rango, onCambio }) {
   useEffect(() => {
     cargarGastos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [proyectoId]);
+  }, [clienteId]);
 
   const busquedaNormalizada = busqueda.trim().toLowerCase();
   const gastosFiltrados = gastos
@@ -38,7 +39,7 @@ export default function GastosList({ proyectoId, rango, onCambio }) {
     try {
       await api('/api/gastos', {
         method: 'POST',
-        body: JSON.stringify({ proyecto_id: proyectoId, fecha, descripcion, monto: Number(monto) }),
+        body: JSON.stringify({ cliente_id: clienteId, fecha, descripcion, monto: Number(monto) }),
       });
       setFecha(isoDateLocal(new Date()));
       setDescripcion('');

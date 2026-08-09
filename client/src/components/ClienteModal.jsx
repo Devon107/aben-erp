@@ -15,17 +15,41 @@ export default function ClienteModal({ open, cliente, onClose, onSaved }) {
   const showToast = useToast();
   const [nombre, setNombre] = useState('');
   const [modoFacturacion, setModoFacturacion] = useState('hora');
+  const [email, setEmail] = useState('');
+  const [telefono, setTelefono] = useState('');
+  const [industria, setIndustria] = useState('');
+  const [sitioWeb, setSitioWeb] = useState('');
+  const [direccion, setDireccion] = useState('');
+  const [contactoPrincipal, setContactoPrincipal] = useState('');
+  const [clienteDesde, setClienteDesde] = useState('');
 
   useEffect(() => {
     if (open) {
       setNombre(cliente?.nombre ?? '');
       setModoFacturacion(cliente?.modo_facturacion ?? 'hora');
+      setEmail(cliente?.email ?? '');
+      setTelefono(cliente?.telefono ?? '');
+      setIndustria(cliente?.industria ?? '');
+      setSitioWeb(cliente?.sitio_web ?? '');
+      setDireccion(cliente?.direccion ?? '');
+      setContactoPrincipal(cliente?.contacto_principal ?? '');
+      setClienteDesde(cliente?.cliente_desde ?? '');
     }
   }, [open, cliente]);
 
   async function guardar(e) {
     e.preventDefault();
-    const payload = { nombre, modo_facturacion: modoFacturacion };
+    const payload = {
+      nombre,
+      modo_facturacion: modoFacturacion,
+      email: email || null,
+      telefono: telefono || null,
+      industria: industria || null,
+      sitio_web: sitioWeb || null,
+      direccion: direccion || null,
+      contacto_principal: contactoPrincipal || null,
+      cliente_desde: clienteDesde || null,
+    };
     try {
       if (cliente) {
         await api(`/api/clientes/${cliente.id}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -69,6 +93,39 @@ export default function ClienteModal({ open, cliente, onClose, onSaved }) {
               </option>
             ))}
           </select>
+        </label>
+        <label>
+          Email
+          <input type="email" placeholder="contacto@empresa.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </label>
+        <label>
+          Teléfono
+          <input type="text" placeholder="+1 415 555 0148" value={telefono} onChange={(e) => setTelefono(e.target.value)} />
+        </label>
+        <label>
+          Industria
+          <input type="text" placeholder="Tecnología" value={industria} onChange={(e) => setIndustria(e.target.value)} />
+        </label>
+        <label>
+          Contacto principal
+          <input
+            type="text"
+            placeholder="Nombre — cargo"
+            value={contactoPrincipal}
+            onChange={(e) => setContactoPrincipal(e.target.value)}
+          />
+        </label>
+        <label>
+          Sitio web
+          <input type="text" placeholder="empresa.com" value={sitioWeb} onChange={(e) => setSitioWeb(e.target.value)} />
+        </label>
+        <label>
+          Dirección
+          <input type="text" placeholder="Ciudad, país" value={direccion} onChange={(e) => setDireccion(e.target.value)} />
+        </label>
+        <label>
+          Cliente desde
+          <input type="date" value={clienteDesde} onChange={(e) => setClienteDesde(e.target.value)} />
         </label>
         <div className="modal-actions">
           <button type="button" className="btn btn-secondary" onClick={onClose}>

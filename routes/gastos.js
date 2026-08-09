@@ -6,12 +6,10 @@ function crearRouter(db) {
   const router = express.Router();
 
   router.get('/', (req, res) => {
-    const { proyecto_id } = req.query;
+    const { cliente_id } = req.query;
     let gastos;
-    if (proyecto_id) {
-      gastos = db
-        .prepare('SELECT * FROM gastos WHERE proyecto_id = ? ORDER BY fecha DESC, id DESC')
-        .all(proyecto_id);
+    if (cliente_id) {
+      gastos = db.prepare('SELECT * FROM gastos WHERE cliente_id = ? ORDER BY fecha DESC, id DESC').all(cliente_id);
     } else {
       gastos = db.prepare('SELECT * FROM gastos ORDER BY fecha DESC, id DESC').all();
     }
@@ -25,20 +23,20 @@ function crearRouter(db) {
   });
 
   router.post('/', (req, res) => {
-    const { proyecto_id, descripcion, monto, fecha } = req.body;
-    if (!proyecto_id || !descripcion || monto === undefined) {
-      return res.status(400).json({ error: 'proyecto_id, descripcion y monto son requeridos' });
+    const { cliente_id, descripcion, monto, fecha } = req.body;
+    if (!cliente_id || !descripcion || monto === undefined) {
+      return res.status(400).json({ error: 'cliente_id, descripcion y monto son requeridos' });
     }
     const errorMonto = requerirNumeroPositivo(monto, 'monto');
     if (errorMonto) return res.status(400).json({ error: errorMonto });
-    const proyecto = db.prepare('SELECT id FROM proyectos WHERE id = ?').get(proyecto_id);
-    if (!proyecto) return res.status(400).json({ error: 'proyecto_id no existe' });
+    const cliente = db.prepare('SELECT id FROM clientes WHERE id = ?').get(cliente_id);
+    if (!cliente) return res.status(400).json({ error: 'cliente_id no existe' });
 
     const fechaFinal = fecha || new Date().toISOString().slice(0, 10);
 
     const info = db
-      .prepare('INSERT INTO gastos (proyecto_id, descripcion, monto, fecha) VALUES (?, ?, ?, ?)')
-      .run(proyecto_id, descripcion, aCentavos(monto), fechaFinal);
+      .prepare('INSERT INTO gastos (cliente_id, descripcion, monto, fecha) VALUES (?, ?, ?, ?)')
+      .run(cliente_id, descripcion, aCentavos(monto), fechaFinal);
     const gasto = db.prepare('SELECT * FROM gastos WHERE id = ?').get(info.lastInsertRowid);
     res.status(201).json(serializarGasto(gasto));
   });
@@ -47,7 +45,7 @@ function crearRouter(db) {
     const existing = db.prepare('SELECT * FROM gastos WHERE id = ?').get(req.params.id);
     if (!existing) return notFound(res, 'Gasto');
 
-    const proyecto_id = req.body.proyecto_id ?? existing.proyecto_id;
+    const cliente_id = req.body.cliente_id ?? existing.cliente_id;
     const descripcion = req.body.descripcion ?? existing.descripcion;
     const monto = req.body.monto !== undefined ? req.body.monto : aDolares(existing.monto);
     const fecha = req.body.fecha ?? existing.fecha;
@@ -55,8 +53,8 @@ function crearRouter(db) {
     const errorMonto = requerirNumeroPositivo(monto, 'monto');
     if (errorMonto) return res.status(400).json({ error: errorMonto });
 
-    db.prepare('UPDATE gastos SET proyecto_id = ?, descripcion = ?, monto = ?, fecha = ? WHERE id = ?').run(
-      proyecto_id,
+    db.prepare('UPDATE gastos SET cliente_id = ?, descripcion = ?, monto = ?, fecha = ? WHERE id = ?').run(
+      cliente_id,
       descripcion,
       aCentavos(monto),
       fecha,
