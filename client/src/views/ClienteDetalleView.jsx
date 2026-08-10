@@ -272,7 +272,12 @@ export default function ClienteDetalleView({ cliente, onVolver, onClienteActuali
   }
 
   function abrirEditarProyecto(proyecto) {
-    setProyectoEditando(proyecto);
+    // `proyecto` puede venir del resumen liviano de ClienteResumen (sin
+    // tipo_cobro/tarifa_hora/precio_fijo); se resuelve contra la lista
+    // completa cargada en este componente para que el modal siempre reciba
+    // el registro completo.
+    const completo = proyectos.find((p) => p.id === proyecto.id) ?? proyecto;
+    setProyectoEditando(completo);
     setModalProyectoAbierto(true);
   }
 
