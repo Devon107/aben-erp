@@ -870,7 +870,7 @@ body {
 }
 
 .input-subregistro {
-  width: 70px;
+  width: 85px;
   flex-shrink: 0;
 }
 
@@ -931,6 +931,18 @@ body {
   gap: 0.4rem;
   max-height: 220px;
   overflow-y: auto;
+}
+
+.mini-list-actividad li{
+  display: flex;
+  justify-content: normal;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.65rem;
+  font-size: 0.82rem;
 }
 
 .mini-list li {
