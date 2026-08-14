@@ -945,7 +945,7 @@ body {
   font-size: 0.82rem;
 }
 
-.mini-list .mini-list-actividad li{
+.mini-list.mini-list-actividad li{
   display: flex;
   justify-content: normal;
   align-items: center;
